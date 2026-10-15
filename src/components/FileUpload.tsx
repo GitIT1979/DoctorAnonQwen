@@ -86,13 +86,13 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
             <span className="px-3 py-1.5 bg-sky-500/20 text-sky-400 rounded-lg text-sm font-medium">
-              .DOCX
+              DOCX
             </span>
             <span className="px-3 py-1.5 bg-cyan-500/20 text-cyan-400 rounded-lg text-sm font-medium">
-              .PDF
+              PDF
             </span>
             <span className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium">
-              .MD
+              MD
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-2">
