@@ -71,19 +71,17 @@ export default function CategorySelector({
             return (
               <div
                 key={category.id}
-                className={`flex items-center justify-between p-3 rounded-lg transition-all cursor-pointer ${
-                  category.enabled
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
+                className="flex items-center justify-between p-3 rounded-lg bg-gray-800/50 border border-gray-700 hover:bg-gray-700/50 transition-all cursor-pointer"
                 onClick={() => onToggle(category.id)}
               >
                 <div className="flex items-center gap-3 flex-1">
                   <span className="text-xl">{category.icon}</span>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-medium text-sm text-white">{category.name}</h3>
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-white/20 text-white">
+                      <h3 className={`font-medium text-sm ${
+                        category.enabled ? 'text-green-400' : 'text-red-400'
+                      }`}>{category.name}</h3>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">
                         {count}
                       </span>
                     </div>
@@ -91,11 +89,11 @@ export default function CategorySelector({
                 </div>
                 <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
                   category.enabled
-                    ? 'bg-white border-white'
-                    : 'bg-transparent border-white/50'
+                    ? 'bg-green-500 border-green-500'
+                    : 'bg-transparent border-gray-500'
                 }`}>
                   {category.enabled && (
-                    <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   )}
