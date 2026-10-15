@@ -48,8 +48,15 @@ function App() {
   }, []);
 
   const handleToggleAll = useCallback((enabled: boolean) => {
-    setCategories(prev => prev.map(cat => ({ ...cat, enabled })));
-  }, []);
+    setCategories(prev => prev.map(cat => {
+      // Переключаем только категории, в которых есть находки
+      const hasFindings = foundData.some(d => d.categoryId === cat.id);
+      if (hasFindings) {
+        return { ...cat, enabled };
+      }
+      return cat;
+    }));
+  }, [foundData]);
 
   const handleAnonymize = useCallback(() => {
     const data = findPersonalData(document!.text, categories, customPatterns);
