@@ -8,6 +8,7 @@ import DocumentPreview from './components/DocumentPreview';
 import StatsPanel from './components/StatsPanel';
 import CustomPatterns from './components/CustomPatterns';
 import FoundDataList from './components/FoundDataList';
+import { exportDocument } from './utils/documentExporter';
 
 type AppState = 'upload' | 'configure' | 'preview';
 
@@ -147,6 +148,27 @@ VIN WBAKV210X0L123456.
     setState('configure');
   }, [categories, customPatterns]);
 
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleDownloadOriginal = useCallback(async () => {
+    if (!document) return;
+    setIsExporting(true);
+    try {
+      const blob = await exportDocument(document, foundData, categories);
+      const ext = document.filename.split('.').pop() || 'docx';
+      const url = URL.createObjectURL(blob);
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = `anonymized_${document.filename}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка при экспорте');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [document, foundData, categories]);
+
   const handleDownloadHtml = useCallback(() => {
     if (!document) return;
     
@@ -275,6 +297,9 @@ VIN WBAKV210X0L123456.
             <div className="text-center">
               <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
               <p className="text-gray-400">Обработка документа...</p>
+              <p className="text-gray-500 text-sm mt-2">
+                Распознавание текста может занять некоторое время
+              </p>
             </div>
           </div>
         )}
@@ -315,10 +340,32 @@ VIN WBAKV210X0L123456.
                   <strong className="text-gray-300">Файл:</strong> {document.filename}
                 </p>
                 <p className="text-sm text-gray-400 mt-1">
-                  <strong className="text-gray-300">Формат:</strong> {document.format.toUpperCase()}
+                  <strong className="text-gray-300">Формат:</strong>{' '}
+                  <span className="text-white">
+                    {document.format === 'image' ? 'Изображение (OCR)' : document.format.toUpperCase()}
+                  </span>
                 </p>
                 <p className="text-sm text-gray-400 mt-1">
                   <strong className="text-gray-300">Символов:</strong> {document.text.length.toLocaleString()}
+                </p>
+                {document.format === 'image' && document.ocrWords && (
+                  <p className="text-sm text-gray-400 mt-1">
+                    <strong className="text-gray-300">Распознано слов:</strong>{' '}
+                    <span className="text-blue-400">{document.ocrWords.length}</span>
+                  </p>
+                )}
+                {document.format === 'image' && document.imageData && (
+                  <div className="mt-2">
+                    <img 
+                      src={document.imageData} 
+                      alt="Preview" 
+                      className="max-h-32 rounded-lg border border-gray-600"
+                    />
+                  </div>
+                )}
+                <p className="text-sm text-gray-400 mt-1">
+                  <strong className="text-gray-300">Экспорт:</strong>{' '}
+                  <span className="text-green-400">{document.format === 'image' ? document.filename.split('.').pop()?.toUpperCase() : document.format.toUpperCase()}</span>
                 </p>
               </div>
             </div>
@@ -327,14 +374,33 @@ VIN WBAKV210X0L123456.
 
         {!isLoading && state === 'preview' && document && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold">Результат анонимизации</h2>
-              <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold">Результат анонимизации</h2>
+                <p className="text-sm text-gray-400 mt-1">
+                  Формат экспорта: <span className="text-white font-semibold">{document.format.toUpperCase()}</span>
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleDownloadOriginal}
+                  disabled={isExporting}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2 font-semibold"
+                >
+                  {isExporting ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Экспорт...
+                    </>
+                  ) : (
+                    <>📥 Скачать {document.format.toUpperCase()}</>
+                  )}
+                </button>
                 <button
                   onClick={handleDownloadHtml}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
                 >
-                  📄 Скачать HTML
+                  📄 HTML
                 </button>
                 <button
                   onClick={handleDownloadReport}
@@ -354,6 +420,7 @@ VIN WBAKV210X0L123456.
               text={document.text}
               foundData={foundData}
               categories={categories}
+              document={document}
             />
           </div>
         )}

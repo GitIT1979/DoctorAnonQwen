@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
+import Tesseract from 'tesseract.js';
 
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
@@ -7,12 +8,49 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs
 export interface ParsedDocument {
   text: string;
   pages?: string[];
-  format: 'docx' | 'pdf' | 'md';
+  format: 'docx' | 'pdf' | 'md' | 'image';
   filename: string;
+  // For images: store the original image data and OCR positions
+  imageData?: string; // base64 data URL
+  imageWidth?: number;
+  imageHeight?: number;
+  ocrWords?: OcrWord[];
+  // For PDF: store page info for redaction
+  pdfPageInfo?: PdfPageInfo[];
+}
+
+export interface OcrWord {
+  text: string;
+  bbox: { x0: number; y0: number; x1: number; y1: number };
+  confidence: number;
+}
+
+export interface PdfPageInfo {
+  width: number;
+  height: number;
+  items: PdfTextItem[];
+}
+
+export interface PdfTextItem {
+  str: string;
+  transform: number[]; // [scaleX, skewY, skewX, scaleY, translateX, translateY]
+  width: number;
+  height: number;
+}
+
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'gif', 'tiff', 'tif'];
+
+export function isImageFile(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  return IMAGE_EXTENSIONS.includes(ext);
 }
 
 export async function parseDocument(file: File): Promise<ParsedDocument> {
   const extension = file.name.split('.').pop()?.toLowerCase();
+  
+  if (extension && IMAGE_EXTENSIONS.includes(extension)) {
+    return parseImage(file);
+  }
   
   switch (extension) {
     case 'docx':
@@ -42,14 +80,30 @@ async function parsePdf(file: File): Promise<ParsedDocument> {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   
   const pages: string[] = [];
+  const pdfPageInfo: PdfPageInfo[] = [];
   let fullText = '';
   
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1.0 });
     const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: any) => item.str)
-      .join(' ');
+    
+    const items: PdfTextItem[] = textContent.items
+      .filter((item: any) => item.str)
+      .map((item: any) => ({
+        str: item.str,
+        transform: item.transform,
+        width: item.width,
+        height: item.height || (item.transform ? item.transform[0] : 12),
+      }));
+    
+    pdfPageInfo.push({
+      width: viewport.width,
+      height: viewport.height,
+      items,
+    });
+    
+    const pageText = items.map(item => item.str).join(' ');
     pages.push(pageText);
     fullText += pageText + '\n\n';
   }
@@ -59,6 +113,7 @@ async function parsePdf(file: File): Promise<ParsedDocument> {
     pages,
     format: 'pdf',
     filename: file.name,
+    pdfPageInfo,
   };
 }
 
@@ -70,4 +125,65 @@ async function parseMarkdown(file: File): Promise<ParsedDocument> {
     format: 'md',
     filename: file.name,
   };
+}
+
+async function parseImage(file: File): Promise<ParsedDocument> {
+  // Read image as base64
+  const imageData = await fileToBase64(file);
+  
+  // Get image dimensions
+  const { width, height } = await getImageDimensions(imageData);
+  
+  // Perform OCR with Russian and English language support
+  const result = await Tesseract.recognize(imageData, 'rus+eng', {
+    logger: (m: any) => {
+      if (m.status === 'recognizing text') {
+        console.log(`OCR progress: ${Math.round(m.progress * 100)}%`);
+      }
+    },
+  });
+  
+  // Extract words with bounding boxes
+  const data = result.data as any;
+  const ocrWords: OcrWord[] = (data.words || []).map((word: any) => ({
+    text: word.text,
+    bbox: {
+      x0: word.bbox.x0,
+      y0: word.bbox.y0,
+      x1: word.bbox.x1,
+      y1: word.bbox.y1,
+    },
+    confidence: word.confidence,
+  }));
+  
+  // Build text from words
+  const text = result.data.text;
+  
+  return {
+    text,
+    format: 'image',
+    filename: file.name,
+    imageData,
+    imageWidth: width,
+    imageHeight: height,
+    ocrWords,
+  };
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.width, height: img.height });
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
 }

@@ -59,7 +59,7 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
       >
         <input
           type="file"
-          accept=".docx,.pdf,.md"
+          accept=".docx,.pdf,.md,.jpg,.jpeg,.png,.bmp,.webp,.gif,.tiff,.tif"
           onChange={handleFileInput}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
@@ -74,7 +74,7 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
               или нажмите для выбора файла
             </p>
           </div>
-          <div className="flex items-center justify-center gap-3 pt-4">
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
             <span className="px-3 py-1.5 bg-blue-600/20 text-blue-400 rounded-lg text-sm font-medium">
               .DOCX
             </span>
@@ -84,7 +84,22 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
             <span className="px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg text-sm font-medium">
               .MD
             </span>
+            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
+              .JPG
+            </span>
+            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
+              .PNG
+            </span>
+            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
+              .WEBP
+            </span>
+            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
+              .BMP
+            </span>
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Изображения обрабатываются через OCR (распознавание текста)
+          </p>
         </div>
       </div>
 
@@ -115,8 +130,8 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
         />
         <FeatureCard
           icon="📥"
-          title="Экспорт результата"
-          description="Скачайте анонимизированный документ в формате HTML с возможностью печати"
+          title="Экспорт в оригинальном формате"
+          description="Результат сохраняется в том же формате, что и исходный файл (DOCX, PDF, PNG и т.д.)"
         />
       </div>
 
