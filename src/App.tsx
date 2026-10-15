@@ -92,6 +92,34 @@ function App() {
         return;
       }
       
+      // Поиск персональных данных с защитой от зависания
+      const allData: FoundData[] = [];
+      for (const doc of parsedDocs) {
+        try {
+          // Таймаут для поиска данных (30 секунд на документ)
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Превышено время поиска')), 30000);
+          });
+          
+          const searchPromise = new Promise<FoundData[]>((resolve) => {
+            const data = findPersonalData(doc.text, categories, customPatterns);
+            resolve(data);
+          });
+          
+          const data = await Promise.race([searchPromise, timeoutPromise]);
+          allData.push(...data);
+        } catch (err) {
+          console.error(`Ошибка поиска данных в ${doc.filename}:`, err);
+        }
+      }
+      
+      // Если это дозагрузка, добавляем к существующим данным
+      if (isAdditional) {
+        setFoundData(prev => [...prev, ...allData]);
+      } else {
+        setFoundData(allData);
+      }
+      
       // Переходим в состояние configure (если ещё не там)
       if (state !== 'configure') {
         setState('configure');
@@ -106,7 +134,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [documents.length, state]);
+  }, [documents.length, state, categories, customPatterns]);
 
   const handleCategoryToggle = useCallback((categoryId: string) => {
     setCategories(prev =>
