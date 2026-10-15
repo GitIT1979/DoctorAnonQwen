@@ -53,10 +53,10 @@ export default function CategorySelector({
       {/* Summary */}
       <div className="flex items-center gap-4 text-sm text-gray-400">
         <span>
-          Найдено: <strong className="text-red-400">{totalFound}</strong>
+          Найдено: <strong className="text-green-400">{totalFound}</strong>
         </span>
         <span>
-          Скрыто: <strong className="text-green-400">{totalWillBeRedacted}</strong>
+          Скрыто: <strong className="text-red-400">{totalWillBeRedacted}</strong>
         </span>
         <span>
           Видимо: <strong className="text-gray-300">{totalFound - totalWillBeRedacted}</strong>
