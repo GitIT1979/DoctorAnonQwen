@@ -2,10 +2,9 @@ import { useCallback, useState } from 'react';
 
 interface FileUploadProps {
   onFileUpload: (files: File[]) => void;
-  onDemo?: () => void;
 }
 
-export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
+export default function FileUpload({ onFileUpload }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -102,19 +101,6 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
           </p>
         </div>
       </div>
-
-      {/* Demo Button */}
-      {onDemo && (
-        <div className="text-center mt-6">
-          <button
-            onClick={onDemo}
-            className="px-6 py-3 bg-purple-600/20 text-purple-400 border border-purple-600/30 hover:bg-purple-600/30 rounded-xl transition-all font-medium"
-          >
-            🧪 Загрузить демо-документ
-          </button>
-          <p className="text-xs text-gray-500 mt-2">Попробуйте без загрузки файла</p>
-        </div>
-      )}
 
       {/* Features */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
