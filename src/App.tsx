@@ -26,21 +26,78 @@ function App() {
   const handleFileUpload = useCallback(async (files: File[]) => {
     setIsLoading(true);
     setError(null);
+    
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+    const MAX_FILES = 50;
+    
+    // Проверка количества файлов
+    if (files.length > MAX_FILES) {
+      setError(`Максимум ${MAX_FILES} файлов. Вы загрузили ${files.length}.`);
+      setIsLoading(false);
+      return;
+    }
+    
     try {
       const parsedDocs: ParsedDocument[] = [];
+      const errors: string[] = [];
       
-      for (const file of files) {
-        const parsed = await parseDocument(file);
-        parsedDocs.push(parsed);
+      // Обработка каждого файла с защитой от ошибок
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // Проверка размера файла
+        if (file.size > MAX_FILE_SIZE) {
+          errors.push(`${file.name}: файл слишком большой (максимум 50 MB)`);
+          continue;
+        }
+        
+        try {
+          // Таймаут для обработки файла (60 секунд)
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Превышено время обработки')), 60000);
+          });
+          
+          const parsePromise = parseDocument(file);
+          const parsed = await Promise.race([parsePromise, timeoutPromise]);
+          parsedDocs.push(parsed);
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : 'Неизвестная ошибка';
+          errors.push(`${file.name}: ${errorMsg}`);
+        }
+      }
+      
+      // Если есть ошибки, показываем их
+      if (errors.length > 0) {
+        setError(`Ошибки при обработке:\n${errors.join('\n')}`);
+      }
+      
+      // Если нет успешно обработанных файлов
+      if (parsedDocs.length === 0) {
+        setIsLoading(false);
+        return;
       }
       
       setDocuments(parsedDocs);
       
-      // Find personal data across all documents
+      // Поиск персональных данных с защитой от зависания
       const allData: FoundData[] = [];
       for (const doc of parsedDocs) {
-        const data = findPersonalData(doc.text, categories, customPatterns);
-        allData.push(...data);
+        try {
+          // Таймаут для поиска данных (30 секунд на документ)
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Превышено время поиска')), 30000);
+          });
+          
+          const searchPromise = new Promise<FoundData[]>((resolve) => {
+            const data = findPersonalData(doc.text, categories, customPatterns);
+            resolve(data);
+          });
+          
+          const data = await Promise.race([searchPromise, timeoutPromise]);
+          allData.push(...data);
+        } catch (err) {
+          console.error(`Ошибка поиска данных в ${doc.filename}:`, err);
+        }
       }
       
       setFoundData(allData);
@@ -86,7 +143,7 @@ function App() {
       setState('configure');
     } else if (state === 'configure') {
       setState('upload');
-      setDocument(null);
+      setDocuments([]);
       setFoundData([]);
     }
   }, [state]);

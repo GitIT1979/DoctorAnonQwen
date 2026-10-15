@@ -26,6 +26,11 @@ export function findPersonalData(
 ): FoundData[] {
   const foundData: FoundData[] = [];
   const seenRanges: Array<{ start: number; end: number }> = [];
+  
+  // Защита от бесконечных циклов
+  const MAX_ITERATIONS = 10000;
+  const startTime = Date.now();
+  const TIMEOUT_MS = 10000; // 10 секунд
 
   // Process custom patterns first
   if (customPatterns && customPatterns.length > 0) {
@@ -33,8 +38,16 @@ export function findPersonalData(
       const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(escapedPattern, 'gi');
       let match;
+      let iterations = 0;
 
-      while ((match = regex.exec(text)) !== null) {
+      while ((match = regex.exec(text)) !== null && iterations < MAX_ITERATIONS) {
+        // Проверка таймаута
+        if (Date.now() - startTime > TIMEOUT_MS) {
+          console.warn('Превышено время поиска персональных данных');
+          break;
+        }
+        
+        iterations++;
         const startIndex = match.index;
         const endIndex = startIndex + match[0].length;
 
@@ -56,6 +69,11 @@ export function findPersonalData(
             enabled: true,
           });
         }
+        
+        // Предотвращение бесконечного цикла для zero-length matches
+        if (match[0].length === 0) {
+          regex.lastIndex++;
+        }
       }
     }
   }
@@ -64,8 +82,16 @@ export function findPersonalData(
     for (const pattern of category.patterns) {
       const regex = new RegExp(pattern.source, pattern.flags);
       let match;
+      let iterations = 0;
 
-      while ((match = regex.exec(text)) !== null) {
+      while ((match = regex.exec(text)) !== null && iterations < MAX_ITERATIONS) {
+        // Проверка таймаута
+        if (Date.now() - startTime > TIMEOUT_MS) {
+          console.warn('Превышено время поиска персональных данных');
+          break;
+        }
+        
+        iterations++;
         const startIndex = match.index;
         const endIndex = startIndex + match[0].length;
 
@@ -99,6 +125,11 @@ export function findPersonalData(
               enabled: category.enabled,
             });
           }
+        }
+        
+        // Предотвращение бесконечного цикла для zero-length matches
+        if (match[0].length === 0) {
+          regex.lastIndex++;
         }
       }
     }

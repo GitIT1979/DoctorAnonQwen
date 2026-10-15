@@ -48,6 +48,12 @@ export function isImageFile(filename: string): boolean {
 export async function parseDocument(file: File): Promise<ParsedDocument> {
   const extension = file.name.split('.').pop()?.toLowerCase();
   
+  // Проверка размера файла (максимум 50 MB)
+  const MAX_SIZE = 50 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    throw new Error('Файл слишком большой (максимум 50 MB)');
+  }
+  
   if (extension && IMAGE_EXTENSIONS.includes(extension)) {
     return parseImage(file);
   }
@@ -79,11 +85,15 @@ async function parsePdf(file: File): Promise<ParsedDocument> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   
+  // Ограничение на количество страниц (максимум 100)
+  const MAX_PAGES = 100;
+  const numPages = Math.min(pdf.numPages, MAX_PAGES);
+  
   const pages: string[] = [];
   const pdfPageInfo: PdfPageInfo[] = [];
   let fullText = '';
   
-  for (let i = 1; i <= pdf.numPages; i++) {
+  for (let i = 1; i <= numPages; i++) {
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale: 1.0 });
     const textContent = await page.getTextContent();
@@ -134,14 +144,26 @@ async function parseImage(file: File): Promise<ParsedDocument> {
   // Get image dimensions
   const { width, height } = await getImageDimensions(imageData);
   
-  // Perform OCR with Russian and English language support
-  const result = await Tesseract.recognize(imageData, 'rus+eng', {
+  // Ограничение на размер изображения (максимум 4000x4000)
+  const MAX_DIMENSION = 4000;
+  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+    throw new Error(`Изображение слишком большое (${width}x${height}). Максимум ${MAX_DIMENSION}x${MAX_DIMENSION}`);
+  }
+  
+  // Таймаут для OCR (90 секунд)
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Превышено время распознавания текста (90 секунд)')), 90000);
+  });
+  
+  const ocrPromise = Tesseract.recognize(imageData, 'rus+eng', {
     logger: (m: any) => {
       if (m.status === 'recognizing text') {
         console.log(`OCR progress: ${Math.round(m.progress * 100)}%`);
       }
     },
   });
+  
+  const result = await Promise.race([ocrPromise, timeoutPromise]);
   
   // Extract words with bounding boxes
   const data = result.data as any;
