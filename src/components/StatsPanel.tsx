@@ -37,9 +37,9 @@ export default function StatsPanel({ foundData, categories }: StatsPanelProps) {
       <div className="p-5 bg-gray-800/50 rounded-xl border border-gray-700">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">📊 Статистика</h3>
         <div className="space-y-3">
-          <StatRow label="Всего найдено" value={totalFound} color="text-yellow-400" />
-          <StatRow label="Будет скрыто" value={willBeRedacted} color="text-red-400" />
-          <StatRow label="Останется видимым" value={willBeVisible} color="text-green-400" />
+          <StatRow label="Всего найдено" value={totalFound} color="text-red-400" />
+          <StatRow label="Будет скрыто" value={willBeRedacted} color="text-green-400" />
+          <StatRow label="Останется видимым" value={willBeVisible} color="text-gray-400" />
         </div>
       </div>
 

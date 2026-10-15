@@ -62,10 +62,10 @@ export default function CategorySelector({
             Обнаружено категорий: <strong className="text-white">{categoriesWithFindings.length}</strong>
           </span>
           <span className="text-gray-400">
-            Найдено данных: <strong className="text-yellow-400">{totalFound}</strong>
+            Найдено данных: <strong className="text-red-400">{totalFound}</strong>
           </span>
           <span className="text-gray-400">
-            Будет скрыто: <strong className="text-red-400">{totalWillBeRedacted}</strong>
+            Будет скрыто: <strong className="text-green-400">{totalWillBeRedacted}</strong>
           </span>
           <span className="text-gray-400">
             Останется видимым: <strong className="text-green-400">{totalFound - totalWillBeRedacted}</strong>
