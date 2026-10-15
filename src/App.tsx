@@ -443,13 +443,47 @@ function App() {
                     <span>⚠️</span>
                     <span>Отклонённые файлы ({rejectedFiles.length})</span>
                   </h3>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {rejectedFiles.map((file, index) => (
-                      <div key={index} className="text-xs text-yellow-200 bg-yellow-900/30 p-2 rounded">
-                        <p className="font-medium">{file.filename}</p>
-                        <p className="text-yellow-400 mt-1">{file.reason}</p>
-                      </div>
-                    ))}
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {rejectedFiles.map((file, index) => {
+                      const ext = file.filename.split('.').pop()?.toLowerCase() || '';
+                      const isImage = ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'gif', 'tiff', 'tif'].includes(ext);
+                      
+                      return (
+                        <div key={index} className="text-xs bg-yellow-900/30 p-3 rounded border border-yellow-700/30">
+                          <p className="font-medium text-yellow-200 mb-1">📄 {file.filename}</p>
+                          <p className="text-yellow-400 mb-2">
+                            <strong>Причина:</strong> {file.reason}
+                          </p>
+                          {isImage && (
+                            <div className="bg-blue-900/20 border border-blue-700/30 rounded p-2 mt-2">
+                              <p className="text-blue-300 font-medium mb-1">💡 Как конвертировать:</p>
+                              <ul className="text-blue-200 space-y-1 ml-3">
+                                <li>• Используйте онлайн-сервис: <span className="underline">ilovepdf.com</span> или <span className="underline">smallpdf.com</span></li>
+                                <li>• Или Microsoft Word: Вставить изображение → Сохранить как PDF</li>
+                                <li>• Или Google Docs: Загрузить изображение → Экспорт в PDF</li>
+                                <li>• Для сканов: используйте Adobe Scan или CamScanner</li>
+                              </ul>
+                              <p className="text-blue-300 mt-2 text-[11px]">
+                                ⚠️ Важно: PDF должен содержать текстовый слой (не быть просто картинкой)
+                              </p>
+                            </div>
+                          )}
+                          {!isImage && ext !== 'docx' && ext !== 'pdf' && ext !== 'md' && (
+                            <div className="bg-blue-900/20 border border-blue-700/30 rounded p-2 mt-2">
+                              <p className="text-blue-300 font-medium mb-1">💡 Поддерживаемые форматы:</p>
+                              <ul className="text-blue-200 space-y-1 ml-3">
+                                <li>• <strong>.DOCX</strong> — документы Microsoft Word</li>
+                                <li>• <strong>.PDF</strong> — PDF с текстовым слоем</li>
+                                <li>• <strong>.MD</strong> — Markdown файлы</li>
+                              </ul>
+                              <p className="text-blue-300 mt-2 text-[11px]">
+                                Конвертируйте файл в один из этих форматов и загрузите снова
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
