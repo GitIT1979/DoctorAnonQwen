@@ -101,40 +101,6 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
           </p>
         </div>
       </div>
-
-      {/* Features */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
-        <FeatureCard
-          icon="🔍"
-          title="Автоматический поиск"
-          description="Находит ФИО, паспорта, ИНН, СНИЛС, адреса, банковские данные и многое другое"
-        />
-        <FeatureCard
-          icon="⚙️"
-          title="Гибкая настройка"
-          description="Выбирайте, какие категории данных скрыть, а какие оставить видимыми"
-        />
-        <FeatureCard
-          icon="📥"
-          title="Экспорт в оригинальном формате"
-          description="Результат сохраняется в том же формате, что и исходный файл (DOCX, PDF, PNG и т.д.)"
-        />
-        <FeatureCard
-          icon="📦"
-          title="Массовая обработка"
-          description="Загрузите до 50 документов за раз и получите общую статистику по всем файлам"
-        />
-      </div>
-    </div>
-  );
-}
-
-function FeatureCard({ icon, title, description }: { icon: string; title: string; description: string }) {
-  return (
-    <div className="p-5 bg-gray-800/50 rounded-xl border border-gray-700 hover:border-gray-600 transition-colors">
-      <div className="text-3xl mb-3">{icon}</div>
-      <h3 className="font-semibold text-white mb-1">{title}</h3>
-      <p className="text-sm text-gray-400">{description}</p>
     </div>
   );
 }
