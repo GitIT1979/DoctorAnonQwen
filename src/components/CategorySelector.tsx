@@ -33,87 +33,72 @@ export default function CategorySelector({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Категории персональных данных</h2>
-          <p className="text-gray-400 text-sm mt-1">
-            Выберите, какие категории данных следует скрыть в документе
-          </p>
-        </div>
+        <h2 className="text-xl font-bold">Обнаруженные данные</h2>
         <div className="flex gap-2">
           <button
             onClick={() => onToggleAll(true)}
-            className="px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors font-medium"
+            className="px-3 py-1.5 text-sm bg-green-600 text-white hover:bg-green-700 rounded-lg transition-colors font-medium"
           >
-            🔒 Скрыть всё
+            ✓ Все
           </button>
           <button
             onClick={() => onToggleAll(false)}
-            className="px-3 py-1.5 text-sm bg-white text-gray-900 hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors font-medium"
+            className="px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors font-medium"
           >
-            👁️ Показать всё
+            ✗ Все
           </button>
         </div>
       </div>
 
-      {/* Summary bar */}
-      <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700 flex items-center justify-between">
-        <div className="flex items-center gap-6 text-sm">
-          <span className="text-gray-400">
-            Обнаружено категорий: <strong className="text-white">{categoriesWithFindings.length}</strong>
-          </span>
-          <span className="text-gray-400">
-            Найдено данных: <strong className="text-red-400">{totalFound}</strong>
-          </span>
-          <span className="text-gray-400">
-            Будет скрыто: <strong className="text-green-400">{totalWillBeRedacted}</strong>
-          </span>
-          <span className="text-gray-400">
-            Останется видимым: <strong className="text-green-400">{totalFound - totalWillBeRedacted}</strong>
-          </span>
-        </div>
+      {/* Summary */}
+      <div className="flex items-center gap-4 text-sm text-gray-400">
+        <span>
+          Найдено: <strong className="text-red-400">{totalFound}</strong>
+        </span>
+        <span>
+          Скрыто: <strong className="text-green-400">{totalWillBeRedacted}</strong>
+        </span>
+        <span>
+          Видимо: <strong className="text-gray-300">{totalFound - totalWillBeRedacted}</strong>
+        </span>
       </div>
 
       {/* Categories Grid */}
       {categoriesWithFindings.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-2">
           {categoriesWithFindings.map((category) => {
             const count = getCountByCategory(category.id);
             return (
               <div
                 key={category.id}
-                className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                className={`flex items-center justify-between p-3 rounded-lg transition-all cursor-pointer ${
                   category.enabled
-                    ? 'bg-red-600 border-red-500 hover:bg-red-700'
-                    : 'bg-white border-gray-300 hover:bg-gray-50'
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-red-600 hover:bg-red-700'
                 }`}
                 onClick={() => onToggle(category.id)}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">{category.icon}</span>
-                    <div>
-                      <h3 className={`font-semibold text-sm ${
-                        category.enabled ? 'text-white' : 'text-gray-900'
-                      }`}>{category.name}</h3>
-                      <p className={`text-xs mt-0.5 ${
-                        category.enabled ? 'text-red-100' : 'text-gray-600'
-                      }`}>{category.description}</p>
-                      <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-medium ${
-                        category.enabled
-                          ? 'bg-amber-100/20 text-amber-100'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        Найдено: {count}
+                <div className="flex items-center gap-3 flex-1">
+                  <span className="text-xl">{category.icon}</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium text-sm text-white">{category.name}</h3>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-white/20 text-white">
+                        {count}
                       </span>
                     </div>
                   </div>
-                  <div className={`w-10 h-6 rounded-full relative transition-colors ${
-                    category.enabled ? 'bg-green-500' : 'bg-red-500'
-                  }`}>
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      category.enabled ? 'translate-x-5' : 'translate-x-1'
-                    }`} />
-                  </div>
+                </div>
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  category.enabled
+                    ? 'bg-white border-white'
+                    : 'bg-transparent border-white/50'
+                }`}>
+                  {category.enabled && (
+                    <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
                 </div>
               </div>
             );
