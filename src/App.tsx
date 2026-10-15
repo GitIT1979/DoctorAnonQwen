@@ -24,17 +24,20 @@ function App() {
 
   const [rejectedFiles, setRejectedFiles] = useState<Array<{filename: string, reason: string}>>([]);
 
-  const handleFileUpload = useCallback(async (files: File[]) => {
+  const handleFileUpload = useCallback(async (files: File[], isAdditional: boolean = false) => {
     setIsLoading(true);
     setError(null);
-    setRejectedFiles([]);
+    if (!isAdditional) {
+      setRejectedFiles([]);
+    }
     
     const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
     const MAX_FILES = 50;
     
     // Проверка количества файлов
-    if (files.length > MAX_FILES) {
-      setError(`Максимум ${MAX_FILES} файлов. Вы загрузили ${files.length}.`);
+    const totalFiles = isAdditional ? documents.length + files.length : files.length;
+    if (totalFiles > MAX_FILES) {
+      setError(`Максимум ${MAX_FILES} файлов. Всего будет: ${totalFiles}.`);
       setIsLoading(false);
       return;
     }
@@ -68,8 +71,17 @@ function App() {
         }
       }
       
-      // Сохраняем список отклонённых файлов
-      setRejectedFiles(rejected);
+      // Если это дозагрузка, добавляем к существующим документам
+      if (isAdditional) {
+        setDocuments(prev => [...prev, ...parsedDocs]);
+        if (rejected.length > 0) {
+          setRejectedFiles(prev => [...prev, ...rejected]);
+        }
+      } else {
+        // Первая загрузка - очищаем и устанавливаем новые
+        setDocuments(parsedDocs);
+        setRejectedFiles(rejected);
+      }
       
       // Если нет успешно обработанных файлов
       if (parsedDocs.length === 0) {
@@ -80,31 +92,10 @@ function App() {
         return;
       }
       
-      setDocuments(parsedDocs);
-      
-      // Поиск персональных данных с защитой от зависания
-      const allData: FoundData[] = [];
-      for (const doc of parsedDocs) {
-        try {
-          // Таймаут для поиска данных (30 секунд на документ)
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Превышено время поиска')), 30000);
-          });
-          
-          const searchPromise = new Promise<FoundData[]>((resolve) => {
-            const data = findPersonalData(doc.text, categories, customPatterns);
-            resolve(data);
-          });
-          
-          const data = await Promise.race([searchPromise, timeoutPromise]);
-          allData.push(...data);
-        } catch (err) {
-          console.error(`Ошибка поиска данных в ${doc.filename}:`, err);
-        }
+      // Переходим в состояние configure (если ещё не там)
+      if (state !== 'configure') {
+        setState('configure');
       }
-      
-      setFoundData(allData);
-      setState('configure');
       
       // Если есть отклонённые файлы, показываем предупреждение
       if (rejected.length > 0) {
@@ -115,7 +106,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [categories, customPatterns]);
+  }, [documents.length, state]);
 
   const handleCategoryToggle = useCallback((categoryId: string) => {
     setCategories(prev =>
@@ -136,14 +127,40 @@ function App() {
     }));
   }, [foundData]);
 
-  const handleAnonymize = useCallback(() => {
-    const allData: FoundData[] = [];
-    for (const doc of documents) {
-      const data = findPersonalData(doc.text, categories, customPatterns);
-      allData.push(...data);
+  const handleAnonymize = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const allData: FoundData[] = [];
+      
+      // Поиск персональных данных с защитой от зависания
+      for (const doc of documents) {
+        try {
+          // Таймаут для поиска данных (30 секунд на документ)
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Превышено время поиска')), 30000);
+          });
+          
+          const searchPromise = new Promise<FoundData[]>((resolve) => {
+            const data = findPersonalData(doc.text, categories, customPatterns);
+            resolve(data);
+          });
+          
+          const data = await Promise.race([searchPromise, timeoutPromise]);
+          allData.push(...data);
+        } catch (err) {
+          console.error(`Ошибка поиска данных в ${doc.filename}:`, err);
+        }
+      }
+      
+      setFoundData(allData);
+      setState('preview');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка при анонимизации');
+    } finally {
+      setIsLoading(false);
     }
-    setFoundData(allData);
-    setState('preview');
   }, [documents, categories, customPatterns]);
 
   const handleBack = useCallback(() => {
@@ -503,11 +520,38 @@ VIN WBAKV210X0L123456.
             </div>
             <div className="space-y-4">
               <StatsPanel foundData={foundData} categories={categories} />
+              
+              {/* Кнопка дозагрузки файлов */}
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".docx,.pdf,.md"
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (files.length > 0) {
+                      handleFileUpload(files, true);
+                    }
+                    // Сбрасываем value, чтобы можно было загрузить тот же файл снова
+                    e.target.value = '';
+                  }}
+                  className="hidden"
+                  id="additional-files-input"
+                />
+                <label
+                  htmlFor="additional-files-input"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <span>➕</span>
+                  <span>Добавить ещё файлы</span>
+                </label>
+              </div>
+              
               <button
                 onClick={handleAnonymize}
                 className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all transform hover:scale-[1.02] shadow-lg shadow-red-600/20"
               >
-                🔒 Анонимизировать документ
+                🔒 Анонимизируй это!
               </button>
               <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
                 <div className="flex items-center justify-between mb-2">

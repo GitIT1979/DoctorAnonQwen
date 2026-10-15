@@ -36,11 +36,18 @@ export default function StatsPanel({ foundData, categories }: StatsPanelProps) {
       {/* Main Stats */}
       <div className="p-5 bg-gray-800/50 rounded-xl border border-gray-700">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">📊 Статистика</h3>
-        <div className="space-y-3">
-          <StatRow label="Всего найдено" value={totalFound} color="text-red-400" />
-          <StatRow label="Будет скрыто" value={willBeRedacted} color="text-green-400" />
-          <StatRow label="Останется видимым" value={willBeVisible} color="text-gray-400" />
-        </div>
+        {totalFound === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-gray-400 text-sm">Данные ещё не найдены</p>
+            <p className="text-gray-500 text-xs mt-1">Нажмите "Анонимизируй это!" для поиска</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <StatRow label="Всего найдено" value={totalFound} color="text-red-400" />
+            <StatRow label="Будет скрыто" value={willBeRedacted} color="text-green-400" />
+            <StatRow label="Останется видимым" value={willBeVisible} color="text-gray-400" />
+          </div>
+        )}
       </div>
 
       {/* Breakdown by category */}

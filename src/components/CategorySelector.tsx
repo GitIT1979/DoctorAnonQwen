@@ -105,8 +105,12 @@ export default function CategorySelector({
       ) : (
         <div className="p-8 bg-gray-800/30 rounded-xl border border-gray-700 text-center">
           <div className="text-4xl mb-3">🔍</div>
-          <p className="text-gray-400">Персональные данные не обнаружены</p>
-          <p className="text-xs text-gray-500 mt-1">Попробуйте добавить пользовательские паттерны для поиска</p>
+          <p className="text-gray-400">
+            {totalFound === 0 ? 'Нажмите "Анонимизируй это!" для поиска данных' : 'Персональные данные не обнаружены'}
+          </p>
+          {totalFound === 0 && (
+            <p className="text-xs text-gray-500 mt-1">Или добавьте пользовательские паттерны для поиска</p>
+          )}
         </div>
       )}
     </div>
