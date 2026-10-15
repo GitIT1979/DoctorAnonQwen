@@ -1,6 +1,5 @@
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
-import Tesseract from 'tesseract.js';
 
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
@@ -8,21 +7,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs
 export interface ParsedDocument {
   text: string;
   pages?: string[];
-  format: 'docx' | 'pdf' | 'md' | 'image';
+  format: 'docx' | 'pdf' | 'md';
   filename: string;
-  // For images: store the original image data and OCR positions
-  imageData?: string; // base64 data URL
-  imageWidth?: number;
-  imageHeight?: number;
-  ocrWords?: OcrWord[];
   // For PDF: store page info for redaction
   pdfPageInfo?: PdfPageInfo[];
-}
-
-export interface OcrWord {
-  text: string;
-  bbox: { x0: number; y0: number; x1: number; y1: number };
-  confidence: number;
 }
 
 export interface PdfPageInfo {
@@ -54,8 +42,9 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
     throw new Error('Файл слишком большой (максимум 50 MB)');
   }
   
+  // Отклоняем изображения с понятным сообщением
   if (extension && IMAGE_EXTENSIONS.includes(extension)) {
-    return parseImage(file);
+    throw new Error('Прошу сперва конвертировать в форматы docx, MD или читаемый pdf');
   }
   
   switch (extension) {
@@ -66,7 +55,7 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
     case 'md':
       return parseMarkdown(file);
     default:
-      throw new Error(`Неподдерживаемый формат файла: ${extension}`);
+      throw new Error(`Прошу сперва конвертировать в форматы docx, MD или читаемый pdf`);
   }
 }
 
@@ -135,77 +124,4 @@ async function parseMarkdown(file: File): Promise<ParsedDocument> {
     format: 'md',
     filename: file.name,
   };
-}
-
-async function parseImage(file: File): Promise<ParsedDocument> {
-  // Read image as base64
-  const imageData = await fileToBase64(file);
-  
-  // Get image dimensions
-  const { width, height } = await getImageDimensions(imageData);
-  
-  // Ограничение на размер изображения (максимум 4000x4000)
-  const MAX_DIMENSION = 4000;
-  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-    throw new Error(`Изображение слишком большое (${width}x${height}). Максимум ${MAX_DIMENSION}x${MAX_DIMENSION}`);
-  }
-  
-  // Таймаут для OCR (90 секунд)
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Превышено время распознавания текста (90 секунд)')), 90000);
-  });
-  
-  const ocrPromise = Tesseract.recognize(imageData, 'rus+eng', {
-    logger: (m: any) => {
-      if (m.status === 'recognizing text') {
-        console.log(`OCR progress: ${Math.round(m.progress * 100)}%`);
-      }
-    },
-  });
-  
-  const result = await Promise.race([ocrPromise, timeoutPromise]);
-  
-  // Extract words with bounding boxes
-  const data = result.data as any;
-  const ocrWords: OcrWord[] = (data.words || []).map((word: any) => ({
-    text: word.text,
-    bbox: {
-      x0: word.bbox.x0,
-      y0: word.bbox.y0,
-      x1: word.bbox.x1,
-      y1: word.bbox.y1,
-    },
-    confidence: word.confidence,
-  }));
-  
-  // Build text from words
-  const text = result.data.text;
-  
-  return {
-    text,
-    format: 'image',
-    filename: file.name,
-    imageData,
-    imageWidth: width,
-    imageHeight: height,
-    ocrWords,
-  };
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.width, height: img.height });
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
 }

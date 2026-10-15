@@ -22,9 +22,12 @@ function App() {
 
   const [documents, setDocuments] = useState<ParsedDocument[]>([]);
 
+  const [rejectedFiles, setRejectedFiles] = useState<Array<{filename: string, reason: string}>>([]);
+
   const handleFileUpload = useCallback(async (files: File[]) => {
     setIsLoading(true);
     setError(null);
+    setRejectedFiles([]);
     
     const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
     const MAX_FILES = 50;
@@ -38,7 +41,7 @@ function App() {
     
     try {
       const parsedDocs: ParsedDocument[] = [];
-      const errors: string[] = [];
+      const rejected: Array<{filename: string, reason: string}> = [];
       
       // Обработка каждого файла с защитой от ошибок
       for (let i = 0; i < files.length; i++) {
@@ -46,7 +49,7 @@ function App() {
         
         // Проверка размера файла
         if (file.size > MAX_FILE_SIZE) {
-          errors.push(`${file.name}: файл слишком большой (максимум 50 MB)`);
+          rejected.push({filename: file.name, reason: 'файл слишком большой (максимум 50 MB)'});
           continue;
         }
         
@@ -61,17 +64,18 @@ function App() {
           parsedDocs.push(parsed);
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : 'Неизвестная ошибка';
-          errors.push(`${file.name}: ${errorMsg}`);
+          rejected.push({filename: file.name, reason: errorMsg});
         }
       }
       
-      // Если есть ошибки, показываем их
-      if (errors.length > 0) {
-        setError(`Ошибки при обработке:\n${errors.join('\n')}`);
-      }
+      // Сохраняем список отклонённых файлов
+      setRejectedFiles(rejected);
       
       // Если нет успешно обработанных файлов
       if (parsedDocs.length === 0) {
+        if (rejected.length > 0) {
+          setError(`Не удалось обработать ни один файл:\n${rejected.map(r => `${r.filename}: ${r.reason}`).join('\n')}`);
+        }
         setIsLoading(false);
         return;
       }
@@ -101,6 +105,11 @@ function App() {
       
       setFoundData(allData);
       setState('configure');
+      
+      // Если есть отклонённые файлы, показываем предупреждение
+      if (rejected.length > 0) {
+        setError(`Обработано ${parsedDocs.length} из ${files.length} файлов. ${rejected.length} файл(ов) отклонено.`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка при загрузке файлов');
     } finally {
@@ -275,7 +284,9 @@ VIN WBAKV210X0L123456.
     let combinedContent = '';
     for (const doc of documents) {
       const docData = foundData.filter(d => doc.text.includes(d.text));
-      const anonymizedContent = anonymizeText(doc.text, docData, categories, anonymizationMode);
+      // Для PDF используем anonymizationMode, для DOCX/MD всегда [censored]
+      const mode = doc.format === 'pdf' ? anonymizationMode : 'censored';
+      const anonymizedContent = anonymizeText(doc.text, docData, categories, mode);
       combinedContent += `\n\n${'='.repeat(80)}\n`;
       combinedContent += `Файл: ${doc.filename}\n`;
       combinedContent += `${'='.repeat(80)}\n\n`;
@@ -438,34 +449,57 @@ VIN WBAKV210X0L123456.
                 onRemoveItem={handleRemoveFoundItem}
               />
               
-              {/* Anonymization Mode */}
-              <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Режим анонимизации</h3>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      value="redact"
-                      checked={anonymizationMode === 'redact'}
-                      onChange={() => setAnonymizationMode('redact')}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm text-gray-300">Закрасить (███)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      value="remove"
-                      checked={anonymizationMode === 'remove'}
-                      onChange={() => setAnonymizationMode('remove')}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm text-gray-300">Удалить полностью</span>
-                  </label>
+              {/* Anonymization Mode - только для PDF */}
+              {documents.some(doc => doc.format === 'pdf') && (
+                <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Режим анонимизации для PDF</h3>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="mode"
+                        value="redact"
+                        checked={anonymizationMode === 'redact'}
+                        onChange={() => setAnonymizationMode('redact')}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm text-gray-300">Закрасить чёрным (███)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="mode"
+                        value="remove"
+                        checked={anonymizationMode === 'remove'}
+                        onChange={() => setAnonymizationMode('remove')}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm text-gray-300">Удалить полностью</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-3">
+                    Примечание: Для DOCX и MD всегда используется замена на [censored]
+                  </p>
                 </div>
-              </div>
+              )}
+              
+              {/* Список отклонённых файлов */}
+              {rejectedFiles.length > 0 && (
+                <div className="p-4 bg-yellow-900/20 rounded-xl border border-yellow-700/50">
+                  <h3 className="text-sm font-semibold text-yellow-300 mb-3 flex items-center gap-2">
+                    <span>⚠️</span>
+                    <span>Отклонённые файлы ({rejectedFiles.length})</span>
+                  </h3>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {rejectedFiles.map((file, index) => (
+                      <div key={index} className="text-xs text-yellow-200 bg-yellow-900/30 p-2 rounded">
+                        <p className="font-medium">{file.filename}</p>
+                        <p className="text-yellow-400 mt-1">{file.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-4">
               <StatsPanel foundData={foundData} categories={categories} />
@@ -487,10 +521,9 @@ VIN WBAKV210X0L123456.
                 </div>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {documents.map((doc, index) => {
-                    const formatIcon = doc.format === 'image' ? '🖼️' : 
-                                      doc.format === 'pdf' ? '📄' : 
+                    const formatIcon = doc.format === 'pdf' ? '📄' : 
                                       doc.format === 'docx' ? '📝' : '📋';
-                    const formatLabel = doc.format === 'image' ? 'Изображение' : doc.format.toUpperCase();
+                    const formatLabel = doc.format.toUpperCase();
                     
                     return (
                       <div key={index} className="flex items-start gap-2 text-xs text-gray-400 border-l-2 border-gray-600 pl-2">

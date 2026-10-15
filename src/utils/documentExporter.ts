@@ -1,6 +1,6 @@
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { ParsedDocument, OcrWord } from './documentParser';
+import { ParsedDocument } from './documentParser';
 import { FoundData, anonymizeText } from './anonymizer';
 import { DataCategory } from './dataCategories';
 
@@ -13,109 +13,21 @@ export async function exportDocument(
   mode: AnonymizationMode = 'redact'
 ): Promise<Blob> {
   switch (document.format) {
-    case 'image':
-      return exportImage(document, foundData, categories, mode);
     case 'pdf':
+      // PDF: закрашивание или удаление
       return exportPdf(document, foundData, categories, mode);
     case 'docx':
-      return exportDocx(document, foundData, categories, mode);
+      // DOCX: всегда [censored]
+      return exportDocx(document, foundData, categories, 'censored');
     case 'md':
-      return exportMarkdown(document, foundData, categories, mode);
+      // MD: всегда [censored]
+      return exportMarkdown(document, foundData, categories, 'censored');
     default:
       throw new Error(`Неподдерживаемый формат: ${document.format}`);
   }
 }
 
-async function exportImage(
-  document: ParsedDocument,
-  foundData: FoundData[],
-  categories: DataCategory[],
-  mode: AnonymizationMode = 'redact'
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = window.document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Не удалось создать canvas'));
-        return;
-      }
-      
-      // Draw original image
-      ctx.drawImage(img, 0, 0);
-      
-      // Get enabled categories
-      const enabledCategories = new Set(
-        categories.filter((c) => c.enabled).map((c) => c.id)
-      );
-      
-      // Find which OCR words to redact
-      const wordsToRedact = findWordsToRedact(document, foundData, enabledCategories);
-      
-      // Draw black rectangles over found words
-      ctx.fillStyle = '#000000';
-      for (const word of wordsToRedact) {
-        ctx.fillRect(
-          word.bbox.x0,
-          word.bbox.y0,
-          word.bbox.x1 - word.bbox.x0,
-          word.bbox.y1 - word.bbox.y0
-        );
-      }
-      
-      // Export based on original format
-      const ext = document.filename.split('.').pop()?.toLowerCase() || 'png';
-      const mimeType = getMimeType(ext);
-      
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Не удалось экспортировать изображение'));
-      }, mimeType, 0.95);
-    };
-    img.onerror = reject;
-    img.src = document.imageData || '';
-  });
-}
-
-function findWordsToRedact(
-  document: ParsedDocument,
-  foundData: FoundData[],
-  enabledCategories: Set<string>
-): OcrWord[] {
-  if (!document.ocrWords || document.ocrWords.length === 0) return [];
-  
-  const wordsToRedact: OcrWord[] = [];
-  const text = document.text;
-  
-  // For each found data, find corresponding OCR words
-  const dataToRedact = foundData.filter(d => 
-    d.categoryId === 'custom' || enabledCategories.has(d.categoryId)
-  );
-  
-  for (const data of dataToRedact) {
-    const dataText = data.text.toLowerCase().trim();
-    
-    // Find OCR words that overlap with this data
-    for (const word of document.ocrWords) {
-      const wordText = word.text.toLowerCase().trim();
-      if (wordText.length < 2) continue;
-      
-      // Check if word is part of the found data
-      if (dataText.includes(wordText) || wordText.includes(dataText.split(' ')[0])) {
-        // Check if this word's text appears in the found data range
-        const wordPosInText = text.toLowerCase().indexOf(wordText);
-        if (wordPosInText >= data.startIndex && wordPosInText < data.endIndex) {
-          wordsToRedact.push(word);
-        }
-      }
-    }
-  }
-  
-  return wordsToRedact;
-}
+// Поддерживаются только PDF, DOCX, MD
 
 async function exportPdf(
   document: ParsedDocument,
@@ -127,7 +39,7 @@ async function exportPdf(
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Courier);
   
-  // Build anonymized plain text with █ for redacted parts
+  // Build anonymized plain text based on mode
   const enabledCategories = new Set(
     categories.filter((c) => c.enabled).map((c) => c.id)
   );
@@ -136,12 +48,20 @@ async function exportPdf(
     d.categoryId === 'custom' || enabledCategories.has(d.categoryId)
   );
   
-  // Build plain text with redactions
+  // Build plain text with redactions or removals
   let plainText = '';
   let lastIndex = 0;
   for (const data of dataToRedact) {
     plainText += document.text.slice(lastIndex, data.startIndex);
-    plainText += '█'.repeat(Math.max(data.text.length, 3));
+    
+    if (mode === 'remove') {
+      // Remove data completely
+      plainText += '';
+    } else {
+      // Redact with black blocks (default for PDF)
+      plainText += '█'.repeat(Math.max(data.text.length, 3));
+    }
+    
     lastIndex = data.endIndex;
   }
   plainText += document.text.slice(lastIndex);
@@ -190,15 +110,13 @@ async function exportDocx(
   document: ParsedDocument,
   foundData: FoundData[],
   categories: DataCategory[],
-  mode: AnonymizationMode = 'redact'
+  mode: AnonymizationMode = 'censored'
 ): Promise<Blob> {
-  const anonymizedText = anonymizeText(document.text, foundData, categories);
-  
-  // Parse the anonymized HTML to create docx paragraphs
+  // Для DOCX всегда используем [censored]
   const lines = document.text.split('\n');
   const paragraphs: Paragraph[] = [];
   
-  // For each line, create segments (normal text and redacted text)
+  // For each line, create segments (normal text and [censored])
   for (const line of lines) {
     if (line.trim() === '') {
       paragraphs.push(new Paragraph({ children: [new TextRun('')] }));
@@ -228,14 +146,13 @@ async function exportDocx(
           runs.push(new TextRun({ text: beforeText, font: 'Courier New', size: 22 }));
         }
         
-        // Add redacted text (black block)
-        const redactedText = '█'.repeat(Math.max(data.text.length, 3));
+        // Add [censored] text
         runs.push(new TextRun({
-          text: redactedText,
+          text: '[censored]',
           font: 'Courier New',
           size: 22,
-          color: '000000',
-          shading: { type: 'clear', fill: '000000', color: '000000' },
+          color: 'FF0000',
+          bold: true,
         }));
         
         lastIndex = data.endIndex;
@@ -266,11 +183,12 @@ async function exportMarkdown(
   document: ParsedDocument,
   foundData: FoundData[],
   categories: DataCategory[],
-  mode: AnonymizationMode = 'redact'
+  mode: AnonymizationMode = 'censored'
 ): Promise<Blob> {
-  const anonymizedText = anonymizeText(document.text, foundData, categories);
+  // Для MD всегда используем [censored]
+  const anonymizedText = anonymizeText(document.text, foundData, categories, 'censored');
   // Remove HTML tags for markdown
-  const plainText = anonymizedText.replace(/<span class="redacted"[^>]*>(.*?)<\/span>/g, '███');
+  const plainText = anonymizedText.replace(/<span class="redacted"[^>]*>(.*?)<\/span>/g, '[censored]');
   const cleanText = plainText.replace(/<[^>]*>/g, '');
   
   return new Blob([cleanText], { type: 'text/markdown;charset=utf-8' });

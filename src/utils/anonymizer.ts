@@ -17,7 +17,7 @@ export interface AnonymizationResult {
   totalRedacted: number;
 }
 
-export type AnonymizationMode = 'redact' | 'remove';
+export type AnonymizationMode = 'redact' | 'remove' | 'censored';
 
 export function findPersonalData(
   text: string,
@@ -157,7 +157,7 @@ export function anonymizeText(
 
   if (dataToRedact.length === 0) return text;
 
-  // Build result by replacing found data with redaction blocks or removing
+  // Build result by replacing found data with redaction blocks, [censored], or removing
   let result = '';
   let lastIndex = 0;
 
@@ -167,8 +167,11 @@ export function anonymizeText(
     if (mode === 'remove') {
       // Remove data completely
       result += '';
+    } else if (mode === 'censored') {
+      // Replace with [censored]
+      result += '[censored]';
     } else {
-      // Redact with black blocks
+      // Redact with black blocks (for PDF)
       result += `<span class="redacted" title="${data.categoryName}">${'█'.repeat(Math.max(data.text.length, 3))}</span>`;
     }
     

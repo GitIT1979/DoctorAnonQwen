@@ -67,7 +67,7 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
       >
         <input
           type="file"
-          accept=".docx,.pdf,.md,.jpg,.jpeg,.png,.bmp,.webp,.gif,.tiff,.tif"
+          accept=".docx,.pdf,.md"
           multiple
           onChange={handleFileInput}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -96,21 +96,9 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
             <span className="px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg text-sm font-medium">
               .MD
             </span>
-            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
-              .JPG
-            </span>
-            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
-              .PNG
-            </span>
-            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
-              .WEBP
-            </span>
-            <span className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-sm font-medium">
-              .BMP
-            </span>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            Изображения обрабатываются через OCR (распознавание текста)
+            Поддерживаются только текстовые форматы. PDF должен содержать текстовый слой.
           </p>
         </div>
       </div>
