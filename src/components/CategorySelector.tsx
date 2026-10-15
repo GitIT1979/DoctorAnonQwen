@@ -100,8 +100,8 @@ export default function CategorySelector({
                       }`}>{category.description}</p>
                       <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-medium ${
                         category.enabled
-                          ? 'bg-white/20 text-white'
-                          : 'bg-gray-200 text-gray-700'
+                          ? 'bg-amber-100/20 text-amber-100'
+                          : 'bg-amber-100 text-amber-700'
                       }`}>
                         Найдено: {count}
                       </span>
