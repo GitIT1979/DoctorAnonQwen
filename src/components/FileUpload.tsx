@@ -74,13 +74,16 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
         />
         
         <div className="space-y-4">
-          <div className="text-6xl">📄</div>
+          <div className="text-6xl">📁</div>
           <div>
             <p className="text-xl font-semibold text-white mb-2">
               Перетащите файлы сюда
             </p>
             <p className="text-gray-400">
               или нажмите для выбора файлов (до 50 файлов)
+            </p>
+            <p className="text-sm text-blue-400 mt-2">
+              ✨ Можно загружать файлы разных форматов одновременно
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-4">

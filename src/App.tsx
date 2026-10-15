@@ -14,7 +14,6 @@ type AppState = 'upload' | 'configure' | 'preview';
 
 function App() {
   const [state, setState] = useState<AppState>('upload');
-  const [document, setDocument] = useState<ParsedDocument | null>(null);
   const [categories, setCategories] = useState<DataCategory[]>(getCategories());
   const [foundData, setFoundData] = useState<FoundData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -336,16 +335,16 @@ VIN WBAKV210X0L123456.
   }, [documents, foundData, categories, anonymizationMode]);
 
   const handleDownloadReport = useCallback(() => {
-    if (!document) return;
+    if (documents.length === 0) return;
     const report = generateReport(foundData, categories);
     const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = window.document.createElement('a');
     a.href = url;
-    a.download = `report_${document.filename}.txt`;
+    a.download = `report_${documents.length}_files.txt`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [document, foundData, categories]);
+  }, [documents, foundData, categories]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
@@ -420,7 +419,7 @@ VIN WBAKV210X0L123456.
           <FileUpload onFileUpload={handleFileUpload} onDemo={handleDemo} />
         )}
 
-        {!isLoading && state === 'configure' && document && (
+        {!isLoading && state === 'configure' && documents.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
               <CategorySelector
@@ -477,24 +476,46 @@ VIN WBAKV210X0L123456.
                 🔒 Анонимизировать документ
               </button>
               <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
-                <p className="text-sm text-gray-400 mb-2">
-                  <strong className="text-gray-300">Загружено файлов:</strong>{' '}
-                  <span className="text-white">{documents.length}</span>
-                </p>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {documents.map((doc, index) => (
-                    <div key={index} className="text-xs text-gray-400 border-l-2 border-gray-600 pl-2">
-                      <p className="truncate">{doc.filename}</p>
-                      <p className="text-gray-500">
-                        {doc.format === 'image' ? 'Изображение' : doc.format.toUpperCase()} • {doc.text.length.toLocaleString()} симв.
-                      </p>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-gray-400">
+                    <strong className="text-gray-300">Загружено файлов:</strong>{' '}
+                    <span className="text-white">{documents.length}</span>
+                  </p>
+                  {documents.length > 1 && (
+                    <span className="text-xs text-blue-400">Разные форматы</span>
+                  )}
                 </div>
-                <p className="text-sm text-gray-400 mt-3">
-                  <strong className="text-gray-300">Экспорт:</strong>{' '}
-                  <span className="text-green-400">Оригинальные форматы</span>
-                </p>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {documents.map((doc, index) => {
+                    const formatIcon = doc.format === 'image' ? '🖼️' : 
+                                      doc.format === 'pdf' ? '📄' : 
+                                      doc.format === 'docx' ? '📝' : '📋';
+                    const formatLabel = doc.format === 'image' ? 'Изображение' : doc.format.toUpperCase();
+                    
+                    return (
+                      <div key={index} className="flex items-start gap-2 text-xs text-gray-400 border-l-2 border-gray-600 pl-2">
+                        <span className="text-sm flex-shrink-0">{formatIcon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate font-medium text-gray-300">{doc.filename}</p>
+                          <p className="text-gray-500">
+                            {formatLabel} • {doc.text.length.toLocaleString()} симв.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <p className="text-sm text-gray-400">
+                    <strong className="text-gray-300">Экспорт:</strong>{' '}
+                    <span className="text-green-400">Оригинальные форматы</span>
+                  </p>
+                  {documents.length > 1 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Каждый файл будет экспортирован в своём формате
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
