@@ -9,6 +9,8 @@ export interface ParsedDocument {
   pages?: string[];
   format: 'docx' | 'pdf' | 'md';
   filename: string;
+  // Original file data for preserving formatting
+  originalData?: ArrayBuffer;
   // For PDF: store page info for redaction
   pdfPageInfo?: PdfPageInfo[];
 }
@@ -44,7 +46,7 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
   
   // Отклоняем изображения с понятным сообщением
   if (extension && IMAGE_EXTENSIONS.includes(extension)) {
-    throw new Error('Прошу сперва конвертировать в форматы docx, MD или читаемый pdf');
+    throw new Error('Прошу сперва конвертировать в форматы docx, MD или читаемый PDF');
   }
   
   switch (extension) {
@@ -55,7 +57,7 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
     case 'md':
       return parseMarkdown(file);
     default:
-      throw new Error(`Прошу сперва конвертировать в форматы docx, MD или читаемый pdf`);
+      throw new Error(`Прошу сперва конвертировать в форматы docx, MD или читаемый PDF`);
   }
 }
 
@@ -67,6 +69,7 @@ async function parseDocx(file: File): Promise<ParsedDocument> {
     text: result.value,
     format: 'docx',
     filename: file.name,
+    originalData: arrayBuffer,
   };
 }
 
@@ -112,6 +115,7 @@ async function parsePdf(file: File): Promise<ParsedDocument> {
     pages,
     format: 'pdf',
     filename: file.name,
+    originalData: arrayBuffer,
     pdfPageInfo,
   };
 }

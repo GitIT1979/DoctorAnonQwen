@@ -1,10 +1,8 @@
-import { Document, Packer, Paragraph, TextRun } from 'docx';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { ParsedDocument } from './documentParser';
-import { FoundData, anonymizeText } from './anonymizer';
+import { PDFDocument, rgb, degrees } from 'pdf-lib';
+import JSZip from 'jszip';
+import { ParsedDocument, PdfPageInfo, PdfTextItem } from './documentParser';
+import { FoundData, AnonymizationMode } from './anonymizer';
 import { DataCategory } from './dataCategories';
-
-import { AnonymizationMode } from './anonymizer';
 
 export async function exportDocument(
   document: ParsedDocument,
@@ -14,205 +12,219 @@ export async function exportDocument(
 ): Promise<Blob> {
   switch (document.format) {
     case 'pdf':
-      // PDF: закрашивание или удаление
-      return exportPdf(document, foundData, categories, mode);
+      return exportPdfWithFormatting(document, foundData, categories, mode);
     case 'docx':
-      // DOCX: всегда [censored]
-      return exportDocx(document, foundData, categories, 'censored');
+      return exportDocxWithFormatting(document, foundData, categories);
     case 'md':
-      // MD: всегда [censored]
-      return exportMarkdown(document, foundData, categories, 'censored');
+      return exportMarkdownWithFormatting(document, foundData, categories);
     default:
       throw new Error(`Неподдерживаемый формат: ${document.format}`);
   }
 }
 
-// Поддерживаются только PDF, DOCX, MD
-
-async function exportPdf(
+async function exportPdfWithFormatting(
   document: ParsedDocument,
   foundData: FoundData[],
   categories: DataCategory[],
-  mode: AnonymizationMode = 'redact'
+  mode: AnonymizationMode
 ): Promise<Blob> {
-  // Create a new PDF with anonymized text
-  const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Courier);
-  
-  // Build anonymized plain text based on mode
+  if (!document.originalData || !document.pdfPageInfo) {
+    throw new Error('Оригинальные данные PDF недоступны');
+  }
+
+  // Загружаем оригинальный PDF
+  const pdfDoc = await PDFDocument.load(document.originalData);
+  const pages = pdfDoc.getPages();
+
+  // Получаем список категорий для скрытия
   const enabledCategories = new Set(
     categories.filter((c) => c.enabled).map((c) => c.id)
   );
-  
+
   const dataToRedact = foundData.filter(d =>
     d.categoryId === 'custom' || enabledCategories.has(d.categoryId)
   );
-  
-  // Build plain text with redactions or removals
-  let plainText = '';
-  let lastIndex = 0;
+
+  // Для каждого найденного фрагмента находим его позицию в PDF
   for (const data of dataToRedact) {
-    plainText += document.text.slice(lastIndex, data.startIndex);
+    const dataText = data.text;
     
-    if (mode === 'remove') {
-      // Remove data completely
-      plainText += '';
-    } else {
-      // Redact with black blocks (default for PDF)
-      plainText += '█'.repeat(Math.max(data.text.length, 3));
-    }
-    
-    lastIndex = data.endIndex;
-  }
-  plainText += document.text.slice(lastIndex);
-  
-  // Replace non-ASCII characters with █ (Courier doesn't support Cyrillic)
-  const safeText = plainText.replace(/[^\x00-\x7F]/g, (char) => {
-    // Keep common ASCII characters
-    if (/[\x20-\x7E]/.test(char)) return char;
-    return '█';
-  });
-  
-  const page = pdfDoc.addPage([595, 842]); // A4
-  const { height } = page.getSize();
-  
-  const lines = safeText.split('\n');
-  let y = height - 50;
-  const lineHeight = 14;
-  const fontSize = 10;
-  
-  for (const line of lines) {
-    if (y < 50) {
-      const newPage = pdfDoc.addPage([595, 842]);
-      y = newPage.getSize().height - 50;
-    }
-    
-    const maxCharsPerLine = 80;
-    const chunks = splitIntoChunks(line, maxCharsPerLine);
-    
-    for (const chunk of chunks) {
-      page.drawText(chunk, {
-        x: 50,
-        y,
-        size: fontSize,
-        font,
-        color: rgb(0, 0, 0),
-      });
-      y -= lineHeight;
+    // Ищем этот текст в pageInfo
+    for (let pageIndex = 0; pageIndex < document.pdfPageInfo.length; pageIndex++) {
+      const pageInfo = document.pdfPageInfo[pageIndex];
+      const page = pages[pageIndex];
+      
+      // Ищем текстовые элементы, которые соответствуют найденным данным
+      const matches = findTextMatchesInPage(dataText, pageInfo.items);
+      
+      for (const match of matches) {
+        if (mode === 'remove') {
+          // Для режима удаления просто закрашиваем белым
+          page.drawRectangle({
+            x: match.x,
+            y: match.y,
+            width: match.width,
+            height: match.height,
+            color: rgb(1, 1, 1),
+          });
+        } else {
+          // Для режима закрашивания рисуем чёрный прямоугольник
+          page.drawRectangle({
+            x: match.x,
+            y: match.y,
+            width: match.width,
+            height: match.height,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
     }
   }
-  
+
   const pdfBytes = await pdfDoc.save();
   return new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
 }
 
-async function exportDocx(
-  document: ParsedDocument,
-  foundData: FoundData[],
-  categories: DataCategory[],
-  mode: AnonymizationMode = 'censored'
-): Promise<Blob> {
-  // Для DOCX всегда используем [censored]
-  const lines = document.text.split('\n');
-  const paragraphs: Paragraph[] = [];
+function findTextMatchesInPage(
+  searchText: string,
+  items: PdfTextItem[]
+): Array<{ x: number; y: number; width: number; height: number }> {
+  const matches: Array<{ x: number; y: number; width: number; height: number }> = [];
   
-  // For each line, create segments (normal text and [censored])
-  for (const line of lines) {
-    if (line.trim() === '') {
-      paragraphs.push(new Paragraph({ children: [new TextRun('')] }));
-      continue;
-    }
+  // Простой поиск: ищем последовательность элементов, которые вместе образуют searchText
+  const normalizedSearch = searchText.toLowerCase().trim();
+  
+  for (let i = 0; i < items.length; i++) {
+    // Пробуем собрать текст начиная с этого элемента
+    let accumulatedText = '';
+    let startX = items[i].transform[4];
+    let startY = items[i].transform[5];
+    let totalWidth = 0;
+    let maxHeight = 0;
     
-    const runs: TextRun[] = [];
-    let lastIndex = 0;
-    
-    // Find all found data in this line
-    const lineStart = document.text.indexOf(line);
-    const lineEnd = lineStart + line.length;
-    
-    const lineData = foundData.filter(d => {
-      const isEnabled = d.categoryId === 'custom' || 
-        categories.some(c => c.id === d.categoryId && c.enabled);
-      return isEnabled && d.startIndex >= lineStart && d.endIndex <= lineEnd;
-    });
-    
-    if (lineData.length === 0) {
-      runs.push(new TextRun({ text: line, font: 'Courier New', size: 22 }));
-    } else {
-      for (const data of lineData) {
-        // Add text before this data
-        const beforeText = document.text.slice(lastIndex, data.startIndex);
-        if (beforeText) {
-          runs.push(new TextRun({ text: beforeText, font: 'Courier New', size: 22 }));
-        }
-        
-        // Add [censored] text
-        runs.push(new TextRun({
-          text: '[censored]',
-          font: 'Courier New',
-          size: 22,
-          color: 'FF0000',
-          bold: true,
-        }));
-        
-        lastIndex = data.endIndex;
+    for (let j = i; j < items.length && j < i + 50; j++) {
+      accumulatedText += items[j].str;
+      totalWidth += items[j].width;
+      maxHeight = Math.max(maxHeight, items[j].height);
+      
+      if (accumulatedText.toLowerCase().includes(normalizedSearch)) {
+        matches.push({
+          x: startX,
+          y: startY,
+          width: totalWidth,
+          height: maxHeight,
+        });
+        break;
       }
       
-      // Add remaining text
-      const remainingText = document.text.slice(lastIndex, lineEnd);
-      if (remainingText) {
-        runs.push(new TextRun({ text: remainingText, font: 'Courier New', size: 22 }));
+      // Если текст стал длиннее поиска, прекращаем
+      if (accumulatedText.length > normalizedSearch.length * 2) {
+        break;
       }
     }
-    
-    paragraphs.push(new Paragraph({ children: runs }));
   }
   
-  const doc = new Document({
-    sections: [{
-      properties: {},
-      children: paragraphs,
-    }],
-  });
+  return matches;
+}
+
+async function exportDocxWithFormatting(
+  document: ParsedDocument,
+  foundData: FoundData[],
+  categories: DataCategory[]
+): Promise<Blob> {
+  if (!document.originalData) {
+    throw new Error('Оригинальные данные DOCX недоступны');
+  }
+
+  // Распаковываем DOCX
+  const zip = await JSZip.loadAsync(document.originalData);
   
-  const blob = await Packer.toBlob(doc);
+  // Получаем список категорий для скрытия
+  const enabledCategories = new Set(
+    categories.filter((c) => c.enabled).map((c) => c.id)
+  );
+
+  const dataToRedact = foundData.filter(d =>
+    d.categoryId === 'custom' || enabledCategories.has(d.categoryId)
+  );
+
+  // Обрабатываем document.xml
+  const documentXml = await zip.file('word/document.xml')?.async('string');
+  if (!documentXml) {
+    throw new Error('Не удалось найти word/document.xml в DOCX');
+  }
+
+  // Заменяем персональные данные на [censored] в XML
+  let modifiedXml = documentXml;
+  
+  for (const data of dataToRedact) {
+    const escapedText = escapeXml(data.text);
+    const replacement = '[censored]';
+    
+    // Заменяем текст в XML, сохраняя теги форматирования
+    modifiedXml = replaceTextInXml(modifiedXml, escapedText, replacement);
+  }
+
+  // Обновляем document.xml в архиве
+  zip.file('word/document.xml', modifiedXml);
+
+  // Генерируем новый DOCX
+  const blob = await zip.generateAsync({ type: 'blob' });
   return blob;
 }
 
-async function exportMarkdown(
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function replaceTextInXml(xml: string, searchText: string, replacement: string): string {
+  // Ищем текст между тегами <w:t> и заменяем его
+  // Это упрощённая версия, которая работает для простых случаев
+  const regex = new RegExp(
+    `(<w:t[^>]*>)([^<]*?${escapeRegex(searchText)}[^<]*?)(</w:t>)`,
+    'g'
+  );
+  
+  return xml.replace(regex, (match, openTag, content, closeTag) => {
+    // Заменяем найденный текст на [censored]
+    const newContent = content.replace(new RegExp(escapeRegex(searchText), 'g'), replacement);
+    return `${openTag}${newContent}${closeTag}`;
+  });
+}
+
+function escapeRegex(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function exportMarkdownWithFormatting(
   document: ParsedDocument,
   foundData: FoundData[],
-  categories: DataCategory[],
-  mode: AnonymizationMode = 'censored'
+  categories: DataCategory[]
 ): Promise<Blob> {
-  // Для MD всегда используем [censored]
-  const anonymizedText = anonymizeText(document.text, foundData, categories, 'censored');
-  // Remove HTML tags for markdown
-  const plainText = anonymizedText.replace(/<span class="redacted"[^>]*>(.*?)<\/span>/g, '[censored]');
-  const cleanText = plainText.replace(/<[^>]*>/g, '');
+  // Для Markdown просто заменяем текст, так как форматирование хранится в самом тексте
+  let text = document.text;
   
-  return new Blob([cleanText], { type: 'text/markdown;charset=utf-8' });
-}
+  // Получаем список категорий для скрытия
+  const enabledCategories = new Set(
+    categories.filter((c) => c.enabled).map((c) => c.id)
+  );
 
-function getMimeType(ext: string): string {
-  const mimeTypes: Record<string, string> = {
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'bmp': 'image/bmp',
-    'webp': 'image/webp',
-    'gif': 'image/gif',
-    'tiff': 'image/tiff',
-    'tif': 'image/tiff',
-  };
-  return mimeTypes[ext] || 'image/png';
-}
+  const dataToRedact = foundData.filter(d =>
+    d.categoryId === 'custom' || enabledCategories.has(d.categoryId)
+  );
 
-function splitIntoChunks(text: string, maxLen: number): string[] {
-  if (text.length <= maxLen) return [text];
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += maxLen) {
-    chunks.push(text.slice(i, i + maxLen));
+  // Заменяем найденные данные на [censored]
+  // Сортируем по позиции, чтобы заменять с конца
+  const sortedData = [...dataToRedact].sort((a, b) => b.startIndex - a.startIndex);
+  
+  for (const data of sortedData) {
+    text = text.slice(0, data.startIndex) + '[censored]' + text.slice(data.endIndex);
   }
-  return chunks;
+
+  return new Blob([text], { type: 'text/markdown;charset=utf-8' });
 }
