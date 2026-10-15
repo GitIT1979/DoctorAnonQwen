@@ -100,6 +100,36 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
           </p>
         </div>
       </div>
+
+      {/* Info Section */}
+      <div className="mt-10 p-6 bg-gray-800/50 rounded-xl border border-gray-700">
+        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          <span>📋</span> Какие данные скрываются?
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-400">
+          <InfoItem text="ФИО (фамилия, имя, отчество)" />
+          <InfoItem text="Паспортные данные" />
+          <InfoItem text="Водительское удостоверение" />
+          <InfoItem text="Адреса проживания" />
+          <InfoItem text="Недвижимое имущество" />
+          <InfoItem text="ИНН, СНИЛС" />
+          <InfoItem text="Банковские счета и карты" />
+          <InfoItem text="Финансовое состояние" />
+          <InfoItem text="Место работы и должности" />
+          <InfoItem text="Телефоны и email" />
+          <InfoItem text="Дата рождения" />
+          <InfoItem text="Места отдыха, транспортные средства" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoItem({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-1.5 h-1.5 bg-red-500 rounded-full flex-shrink-0" />
+      <span>{text}</span>
     </div>
   );
 }
