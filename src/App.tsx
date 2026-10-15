@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { parseDocument, ParsedDocument } from './utils/documentParser';
 import { DataCategory, getCategories } from './utils/dataCategories';
-import { findPersonalData, anonymizeText, FoundData, generateReport } from './utils/anonymizer';
+import { findPersonalData, anonymizeText, FoundData, generateReport, AnonymizationMode } from './utils/anonymizer';
 import FileUpload from './components/FileUpload';
 import CategorySelector from './components/CategorySelector';
 import DocumentPreview from './components/DocumentPreview';
@@ -21,19 +21,32 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [customPatterns, setCustomPatterns] = useState<string[]>([]);
 
-  const handleFileUpload = useCallback(async (file: File) => {
+  const [documents, setDocuments] = useState<ParsedDocument[]>([]);
+
+  const handleFileUpload = useCallback(async (files: File[]) => {
     setIsLoading(true);
     setError(null);
     try {
-      const parsed = await parseDocument(file);
-      setDocument(parsed);
+      const parsedDocs: ParsedDocument[] = [];
       
-      // Find personal data
-      const data = findPersonalData(parsed.text, categories, customPatterns);
-      setFoundData(data);
+      for (const file of files) {
+        const parsed = await parseDocument(file);
+        parsedDocs.push(parsed);
+      }
+      
+      setDocuments(parsedDocs);
+      
+      // Find personal data across all documents
+      const allData: FoundData[] = [];
+      for (const doc of parsedDocs) {
+        const data = findPersonalData(doc.text, categories, customPatterns);
+        allData.push(...data);
+      }
+      
+      setFoundData(allData);
       setState('configure');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка при загрузке файла');
+      setError(err instanceof Error ? err.message : 'Ошибка при загрузке файлов');
     } finally {
       setIsLoading(false);
     }
@@ -59,10 +72,14 @@ function App() {
   }, [foundData]);
 
   const handleAnonymize = useCallback(() => {
-    const data = findPersonalData(document!.text, categories, customPatterns);
-    setFoundData(data);
+    const allData: FoundData[] = [];
+    for (const doc of documents) {
+      const data = findPersonalData(doc.text, categories, customPatterns);
+      allData.push(...data);
+    }
+    setFoundData(allData);
     setState('preview');
-  }, [document, categories, customPatterns]);
+  }, [documents, categories, customPatterns]);
 
   const handleBack = useCallback(() => {
     if (state === 'preview') {
@@ -76,7 +93,7 @@ function App() {
 
   const handleReset = useCallback(() => {
     setState('upload');
-    setDocument(null);
+    setDocuments([]);
     setFoundData([]);
     setCategories(getCategories());
     setError(null);
@@ -146,11 +163,13 @@ VIN WBAKV210X0L123456.
 4.4. На момент заключения договора у Продавца имеется задолженность перед банком в размере 450 000 рублей по кредитному договору № 123/2022.
 4.5. Покупатель должен третьему лицу Сидорову В.И. сумму долга 150 000 рублей по расписке от 01.02.2023.`;
 
-    setDocument({
+    const demoDoc: ParsedDocument = {
       text: demoText,
       format: 'md',
       filename: 'demo_contract.md',
-    });
+    };
+
+    setDocuments([demoDoc]);
 
     const data = findPersonalData(demoText, categories, customPatterns);
     setFoundData(data);
@@ -159,34 +178,59 @@ VIN WBAKV210X0L123456.
 
   const [isExporting, setIsExporting] = useState(false);
 
+  const [anonymizationMode, setAnonymizationMode] = useState<AnonymizationMode>('redact');
+
   const handleDownloadOriginal = useCallback(async () => {
-    if (!document) return;
+    if (documents.length === 0) return;
     setIsExporting(true);
     try {
-      const blob = await exportDocument(document, foundData, categories);
-      const ext = document.filename.split('.').pop() || 'docx';
-      const url = URL.createObjectURL(blob);
-      const a = window.document.createElement('a');
-      a.href = url;
-      a.download = `anonymized_${document.filename}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Export each document separately
+      for (let i = 0; i < documents.length; i++) {
+        const doc = documents[i];
+        const docData = foundData.filter(d => {
+          // Find data that belongs to this document
+          return doc.text.includes(d.text);
+        });
+        
+        const blob = await exportDocument(doc, docData, categories, anonymizationMode);
+        const url = URL.createObjectURL(blob);
+        const a = window.document.createElement('a');
+        a.href = url;
+        a.download = `anonymized_${doc.filename}`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        // Small delay between downloads
+        if (i < documents.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка при экспорте');
     } finally {
       setIsExporting(false);
     }
-  }, [document, foundData, categories]);
+  }, [documents, foundData, categories, anonymizationMode]);
 
   const handleDownloadHtml = useCallback(() => {
-    if (!document) return;
+    if (documents.length === 0) return;
     
-    const anonymizedContent = anonymizeText(document.text, foundData, categories);
+    // Combine all documents
+    let combinedContent = '';
+    for (const doc of documents) {
+      const docData = foundData.filter(d => doc.text.includes(d.text));
+      const anonymizedContent = anonymizeText(doc.text, docData, categories, anonymizationMode);
+      combinedContent += `\n\n${'='.repeat(80)}\n`;
+      combinedContent += `Файл: ${doc.filename}\n`;
+      combinedContent += `${'='.repeat(80)}\n\n`;
+      combinedContent += anonymizedContent;
+    }
+    
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Анонимизированный документ - ${document.filename}</title>
+  <title>Анонимизированные документы</title>
   <style>
     body {
       font-family: 'Courier New', monospace;
@@ -221,7 +265,7 @@ VIN WBAKV210X0L123456.
   <h1 style="text-align:center; border-bottom: 2px solid #000; padding-bottom: 10px;">
     ██████ СЕКРЕТНО ██████
   </h1>
-  <pre>${anonymizedContent}</pre>
+  <pre>${combinedContent}</pre>
 </body>
 </html>`;
 
@@ -229,10 +273,10 @@ VIN WBAKV210X0L123456.
     const url = URL.createObjectURL(blob);
     const a = window.document.createElement('a');
     a.href = url;
-    a.download = `anonymized_${document.filename}.html`;
+    a.download = `anonymized_documents.html`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [document, foundData, categories]);
+  }, [documents, foundData, categories, anonymizationMode]);
 
   const handleDownloadReport = useCallback(() => {
     if (!document) return;
@@ -337,6 +381,35 @@ VIN WBAKV210X0L123456.
                 foundData={foundData}
                 onRemoveItem={handleRemoveFoundItem}
               />
+              
+              {/* Anonymization Mode */}
+              <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">Режим анонимизации</h3>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="mode"
+                      value="redact"
+                      checked={anonymizationMode === 'redact'}
+                      onChange={() => setAnonymizationMode('redact')}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-300">Закрасить (███)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="mode"
+                      value="remove"
+                      checked={anonymizationMode === 'remove'}
+                      onChange={() => setAnonymizationMode('remove')}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-300">Удалить полностью</span>
+                  </label>
+                </div>
+              </div>
             </div>
             <div className="space-y-4">
               <StatsPanel foundData={foundData} categories={categories} />
@@ -347,49 +420,36 @@ VIN WBAKV210X0L123456.
                 🔒 Анонимизировать документ
               </button>
               <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
-                <p className="text-sm text-gray-400">
-                  <strong className="text-gray-300">Файл:</strong> {document.filename}
+                <p className="text-sm text-gray-400 mb-2">
+                  <strong className="text-gray-300">Загружено файлов:</strong>{' '}
+                  <span className="text-white">{documents.length}</span>
                 </p>
-                <p className="text-sm text-gray-400 mt-1">
-                  <strong className="text-gray-300">Формат:</strong>{' '}
-                  <span className="text-white">
-                    {document.format === 'image' ? 'Изображение (OCR)' : document.format.toUpperCase()}
-                  </span>
-                </p>
-                <p className="text-sm text-gray-400 mt-1">
-                  <strong className="text-gray-300">Символов:</strong> {document.text.length.toLocaleString()}
-                </p>
-                {document.format === 'image' && document.ocrWords && (
-                  <p className="text-sm text-gray-400 mt-1">
-                    <strong className="text-gray-300">Распознано слов:</strong>{' '}
-                    <span className="text-blue-400">{document.ocrWords.length}</span>
-                  </p>
-                )}
-                {document.format === 'image' && document.imageData && (
-                  <div className="mt-2">
-                    <img 
-                      src={document.imageData} 
-                      alt="Preview" 
-                      className="max-h-32 rounded-lg border border-gray-600"
-                    />
-                  </div>
-                )}
-                <p className="text-sm text-gray-400 mt-1">
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {documents.map((doc, index) => (
+                    <div key={index} className="text-xs text-gray-400 border-l-2 border-gray-600 pl-2">
+                      <p className="truncate">{doc.filename}</p>
+                      <p className="text-gray-500">
+                        {doc.format === 'image' ? 'Изображение' : doc.format.toUpperCase()} • {doc.text.length.toLocaleString()} симв.
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-gray-400 mt-3">
                   <strong className="text-gray-300">Экспорт:</strong>{' '}
-                  <span className="text-green-400">{document.format === 'image' ? document.filename.split('.').pop()?.toUpperCase() : document.format.toUpperCase()}</span>
+                  <span className="text-green-400">Оригинальные форматы</span>
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {!isLoading && state === 'preview' && document && (
+        {!isLoading && state === 'preview' && documents.length > 0 && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-bold">Результат анонимизации</h2>
                 <p className="text-sm text-gray-400 mt-1">
-                  Формат экспорта: <span className="text-white font-semibold">{document.format.toUpperCase()}</span>
+                  Обработано файлов: <span className="text-white font-semibold">{documents.length}</span>
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -404,7 +464,7 @@ VIN WBAKV210X0L123456.
                       Экспорт...
                     </>
                   ) : (
-                    <>📥 Скачать {document.format.toUpperCase()}</>
+                    <>📥 Скачать {documents.length} файл(ов)</>
                   )}
                 </button>
                 <button
@@ -427,12 +487,22 @@ VIN WBAKV210X0L123456.
                 </button>
               </div>
             </div>
-            <DocumentPreview
-              text={document.text}
-              foundData={foundData}
-              categories={categories}
-              document={document}
-            />
+            {documents.map((doc, index) => {
+              const docData = foundData.filter(d => doc.text.includes(d.text));
+              return (
+                <div key={index} className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-300 mb-2">
+                    📄 {doc.filename}
+                  </h3>
+                  <DocumentPreview
+                    text={doc.text}
+                    foundData={docData}
+                    categories={categories}
+                    document={doc}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </main>

@@ -4,20 +4,23 @@ import { ParsedDocument, OcrWord } from './documentParser';
 import { FoundData, anonymizeText } from './anonymizer';
 import { DataCategory } from './dataCategories';
 
+import { AnonymizationMode } from './anonymizer';
+
 export async function exportDocument(
   document: ParsedDocument,
   foundData: FoundData[],
-  categories: DataCategory[]
+  categories: DataCategory[],
+  mode: AnonymizationMode = 'redact'
 ): Promise<Blob> {
   switch (document.format) {
     case 'image':
-      return exportImage(document, foundData, categories);
+      return exportImage(document, foundData, categories, mode);
     case 'pdf':
-      return exportPdf(document, foundData, categories);
+      return exportPdf(document, foundData, categories, mode);
     case 'docx':
-      return exportDocx(document, foundData, categories);
+      return exportDocx(document, foundData, categories, mode);
     case 'md':
-      return exportMarkdown(document, foundData, categories);
+      return exportMarkdown(document, foundData, categories, mode);
     default:
       throw new Error(`Неподдерживаемый формат: ${document.format}`);
   }
@@ -26,7 +29,8 @@ export async function exportDocument(
 async function exportImage(
   document: ParsedDocument,
   foundData: FoundData[],
-  categories: DataCategory[]
+  categories: DataCategory[],
+  mode: AnonymizationMode = 'redact'
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -116,7 +120,8 @@ function findWordsToRedact(
 async function exportPdf(
   document: ParsedDocument,
   foundData: FoundData[],
-  categories: DataCategory[]
+  categories: DataCategory[],
+  mode: AnonymizationMode = 'redact'
 ): Promise<Blob> {
   // Create a new PDF with anonymized text
   const pdfDoc = await PDFDocument.create();
@@ -184,7 +189,8 @@ async function exportPdf(
 async function exportDocx(
   document: ParsedDocument,
   foundData: FoundData[],
-  categories: DataCategory[]
+  categories: DataCategory[],
+  mode: AnonymizationMode = 'redact'
 ): Promise<Blob> {
   const anonymizedText = anonymizeText(document.text, foundData, categories);
   
@@ -259,7 +265,8 @@ async function exportDocx(
 async function exportMarkdown(
   document: ParsedDocument,
   foundData: FoundData[],
-  categories: DataCategory[]
+  categories: DataCategory[],
+  mode: AnonymizationMode = 'redact'
 ): Promise<Blob> {
   const anonymizedText = anonymizeText(document.text, foundData, categories);
   // Remove HTML tags for markdown

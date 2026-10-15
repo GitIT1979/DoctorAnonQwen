@@ -17,6 +17,8 @@ export interface AnonymizationResult {
   totalRedacted: number;
 }
 
+export type AnonymizationMode = 'redact' | 'remove';
+
 export function findPersonalData(
   text: string,
   categories: DataCategory[],
@@ -75,16 +77,28 @@ export function findPersonalData(
         );
 
         if (!overlaps && match[0].trim().length > 2) {
-          seenRanges.push({ start: startIndex, end: endIndex });
-          foundData.push({
-            id: `data-${foundData.length}`,
-            categoryId: category.id,
-            categoryName: category.name,
-            text: match[0],
-            startIndex,
-            endIndex,
-            enabled: category.enabled,
+          // Check if this match should be excluded based on context
+          const shouldExclude = category.excludeContexts?.some(excludePattern => {
+            // Get context around the match (100 chars before and after)
+            const contextStart = Math.max(0, startIndex - 100);
+            const contextEnd = Math.min(text.length, endIndex + 100);
+            const context = text.substring(contextStart, contextEnd);
+            
+            return excludePattern.test(context);
           });
+
+          if (!shouldExclude) {
+            seenRanges.push({ start: startIndex, end: endIndex });
+            foundData.push({
+              id: `data-${foundData.length}`,
+              categoryId: category.id,
+              categoryName: category.name,
+              text: match[0],
+              startIndex,
+              endIndex,
+              enabled: category.enabled,
+            });
+          }
         }
       }
     }
@@ -98,7 +112,8 @@ export function findPersonalData(
 export function anonymizeText(
   text: string,
   foundData: FoundData[],
-  categories: DataCategory[]
+  categories: DataCategory[],
+  mode: AnonymizationMode = 'redact'
 ): string {
   const enabledCategories = new Set(
     categories.filter((c) => c.enabled).map((c) => c.id)
@@ -111,13 +126,21 @@ export function anonymizeText(
 
   if (dataToRedact.length === 0) return text;
 
-  // Build result by replacing found data with redaction blocks
+  // Build result by replacing found data with redaction blocks or removing
   let result = '';
   let lastIndex = 0;
 
   for (const data of dataToRedact) {
     result += escapeHtml(text.slice(lastIndex, data.startIndex));
-    result += `<span class="redacted" title="${data.categoryName}">${'█'.repeat(Math.max(data.text.length, 3))}</span>`;
+    
+    if (mode === 'remove') {
+      // Remove data completely
+      result += '';
+    } else {
+      // Redact with black blocks
+      result += `<span class="redacted" title="${data.categoryName}">${'█'.repeat(Math.max(data.text.length, 3))}</span>`;
+    }
+    
     lastIndex = data.endIndex;
   }
 

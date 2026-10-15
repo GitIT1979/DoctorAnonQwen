@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 
 interface FileUploadProps {
-  onFileUpload: (file: File) => void;
+  onFileUpload: (files: File[]) => void;
   onDemo?: () => void;
 }
 
@@ -11,8 +11,12 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) onFileUpload(file);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      // Limit to 50 files
+      const limitedFiles = files.slice(0, 50);
+      onFileUpload(limitedFiles);
+    }
   }, [onFileUpload]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -25,8 +29,12 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
   }, []);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) onFileUpload(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      // Limit to 50 files
+      const limitedFiles = files.slice(0, 50);
+      onFileUpload(limitedFiles);
+    }
   }, [onFileUpload]);
 
   return (
@@ -60,6 +68,7 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
         <input
           type="file"
           accept=".docx,.pdf,.md,.jpg,.jpeg,.png,.bmp,.webp,.gif,.tiff,.tif"
+          multiple
           onChange={handleFileInput}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
@@ -68,10 +77,10 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
           <div className="text-6xl">📄</div>
           <div>
             <p className="text-xl font-semibold text-white mb-2">
-              Перетащите файл сюда
+              Перетащите файлы сюда
             </p>
             <p className="text-gray-400">
-              или нажмите для выбора файла
+              или нажмите для выбора файлов (до 50 файлов)
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
@@ -117,7 +126,7 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
       )}
 
       {/* Features */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
         <FeatureCard
           icon="🔍"
           title="Автоматический поиск"
@@ -132,6 +141,11 @@ export default function FileUpload({ onFileUpload, onDemo }: FileUploadProps) {
           icon="📥"
           title="Экспорт в оригинальном формате"
           description="Результат сохраняется в том же формате, что и исходный файл (DOCX, PDF, PNG и т.д.)"
+        />
+        <FeatureCard
+          icon="📦"
+          title="Массовая обработка"
+          description="Загрузите до 50 документов за раз и получите общую статистику по всем файлам"
         />
       </div>
 
