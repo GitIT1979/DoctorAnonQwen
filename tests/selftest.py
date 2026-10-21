@@ -203,6 +203,15 @@ def main() -> int:
         left_s = [b for b in BANNED_DOC if b in streams]
         check(not left_s, "в потоках PDF нет скрытых данных", f"осталось: {left_s}")
 
+    print("\n== PDF всегда остаётся PDF ==")
+    r = run(["doc.pdf", "-o", "wrong.md"])
+    fixed = os.path.join(WORK, "wrong.pdf")
+    check(os.path.exists(fixed), "результат сохранён как .pdf", f"код {r.returncode}")
+    if os.path.exists(fixed):
+        head = open(fixed, "rb").read(5)
+        check(head == b"%PDF-", "внутри действительно PDF", repr(head))
+        check(not os.path.exists(os.path.join(WORK, "wrong.md")), "файл с чужим расширением не создан")
+
     print("\n== судебный акт ==")
     r = run(["court.md"])
     out_court = os.path.join(WORK, "court_anon.md")

@@ -1002,6 +1002,10 @@ def process(path: str, args, enabled: Optional[set] = None):
             _, found = scan_pdf(path, mode, enabled, args.ocr, args.dpi, args.court_keep_ids)
             enabled = ask_categories(found)
         dst = args.out or out_name(path, ".pdf")
+        if not dst.lower().endswith(".pdf"):
+            fixed = os.path.splitext(dst)[0] + ".pdf"
+            print(f"PDF сохраняется только в PDF: {dst} -> {fixed}", file=sys.stderr)
+            dst = fixed
         rep = render_pdf(path, dst, mode, enabled, args.ocr, args.dpi, args.keep_meta, args.court_keep_ids)
         left = verify_pdf(dst, enabled, mode)
         rep["mode"] = mode
