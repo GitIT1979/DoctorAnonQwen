@@ -65,6 +65,7 @@ from PIL import Image, ImageDraw
 PLACEHOLDER = "[censored]"
 SAFE_NAME = False
 BAR_BORDER = True
+TEXT_LAYER = True
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 # --------------------------------------------------------------------------- #
@@ -219,6 +220,10 @@ RULES: List[Tuple[str, str, str, Optional[str], int]] = [
      r"свидетельств\w+\s+о\s+рождени\w+|полис\w*\s+ОМС)\s*(?:сери[яию]|№|:)\s*[^\n]{2,60}", None, 0),
     # --- address ---
     ("address", "addr_street", STREET + r"\.?\s+[^,;:\n]{2,60}", None, 0),
+    ("address", "street_before",
+     r"\b[А-ЯЁ][А-Яа-яЁё\-]+(?:\s+[А-ЯЁ][А-Яа-яЁё\-]+)?\s+"
+     r"(?:ул\.|улица|пр-т|проспект|пер\.|переулок|наб\.|набережная|ш\.|шоссе|"
+     r"пл\.|площадь|б-р|бульвар|проезд|туп\.)", None, 0),
     ("address", "addr_house",
      r"\b(?:д|дом|кв|квартира|корп|корпус|стр|строение|оф|офис|пом|помещение)\.?\s*№?\s*\d+[а-яa-z]?(?:/\d+)?", None, 0),
     ("address", "addr_index", r"(?:индекс\s*[:№]?\s*)?\b\d{6}\b(?=\s*,?\s*(?:г\.|город|обл|область|край|респ))", None, 0),
@@ -458,8 +463,8 @@ PATRONYMIC = re.compile(
     r"иевич(?:а|у|ем)?|иевн(?:а|ы|е|у)|иничн(?:а|ы|е|у)|ичн(?:а|ы|е|у))$",
     re.I,
 )
-SURNAME = re.compile(r"(?:ов|ев|ёв|ин|ын|ский|цкий|ская|цкая|ой|ый|ая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых|son|s|ova|ev|in)$", re.I)
-SURNAME_STRICT = re.compile(r"(?:ов|ев|ёв|ин|ын|ский|цкий|ская|цкая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых)$", re.I)
+SURNAME = re.compile(r"(?:ов|ев|ёв|ин|ын|ова|ева|ёва|ина|ына|ский|цкий|ская|цкая|ой|ый|ая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых|son|s|ova|ev|in)$", re.I)
+SURNAME_STRICT = re.compile(r"(?:ов|ев|ёв|ин|ын|ова|ева|ёва|ина|ына|ский|цкий|ская|цкая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых)$", re.I)
 NAME_STOP = {"российской", "федерации", "россия", "республики", "области", "края", "района",
              "города", "инспекции", "службы", "налоговой", "федеральной", "россии", "город",
              "улица", "государства", "паспорт", "справка", "сведения", "заявление"}
@@ -511,6 +516,10 @@ def find_names(line: Line) -> List[Tuple[int, int]]:
                 if k < n and name_tok(toks[k][2]) and toks[k][2].lower() not in NAME_STOP:
                     end = toks[k][1]
             spans.append((a, end))
+            continue
+        if (re.fullmatch(r"[А-ЯЁ]\.(?:[А-ЯЁ]\.)?", t) and i + 1 < n
+                and SURNAME.search(toks[i + 1][2])):
+            spans.append((a, toks[i + 1][1]))
             continue
         if re.fullmatch(r"[А-ЯЁ]\.(?:[А-ЯЁ]\.)?", t) and i > 0 and SURNAME.search(toks[i - 1][2]):
             end = b
@@ -577,10 +586,17 @@ def collect_hits(lines: List[Line], enabled: set, mode: str, only_ids: Optional[
                     rects.append((r, cat))
                 stats[cat] = stats.get(cat, 0) + 1
         if "person" in enabled and only_ids is None:
-            for a, b in find_names(line) + english_names(line):
+            person_spans = find_names(line) + english_names(line)
+            for a, b in person_spans:
                 for r in line.rects_for(a, b):
                     rects.append((r, "person"))
                 stats["person"] = stats.get("person", 0) + 1
+            # в строке с ФИО даты — это даты рождения, их тоже закрываем
+            if person_spans and "birth" in enabled and not keep_ids:
+                for m in re.finditer(r"\b\d{2}[.\-]\d{2}[.\-](?:19|20)\d{2}\b", line.text):
+                    for r in line.rects_for(m.start(), m.end()):
+                        rects.append((r, "birth"))
+                    stats["birth"] = stats.get("birth", 0) + 1
     return rects, stats
 
 
@@ -766,6 +782,49 @@ def scan_pdf(src: str, mode: str, enabled: set, ocr: str, dpi: int, keep_ids: bo
     return per_page, totals
 
 
+def _hidden_font():
+    """Шрифт с кириллицей для невидимого текстового слоя."""
+    for p in (r"C:\Windows\Fonts\arial.ttf",
+              r"C:\Windows\Fonts\DejaVuSans.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _insert_invisible_text(page, lines, boxes, report) -> int:
+    """Кладёт слова OCR невидимым слоем (render_mode=3), пропуская закрытые плашками."""
+    path = _hidden_font()
+    if not path:
+        report["text_layer_warning"] = "нет шрифта с кириллицей"
+        return 0
+    try:
+        font = pymupdf.Font(fontfile=path)
+    except Exception as err:
+        report["text_layer_warning"] = f"шрифт не загрузился: {err}"
+        return 0
+    writer = pymupdf.TextWriter(page.rect)
+    n = 0
+    for line in lines:
+        kept = [(w, w.text) for w in line.words
+                if w.text.strip() and not any(w.rect.intersects(b) for b in boxes)]
+        if not kept:
+            continue
+        heights = sorted(w.rect.height for w, _ in kept)
+        h = heights[len(heights) // 2]
+        baseline = pymupdf.Point(kept[0][0].rect.x0, max(w.rect.y1 for w, _ in kept) - 0.2 * h)
+        text = " ".join(t for _, t in kept)
+        try:
+            writer.append(baseline, text, font=font, fontsize=h * 0.8)
+            n += len(kept)
+        except Exception:
+            continue
+    if n:
+        writer.write_text(page, color=(0, 0, 0), render_mode=3)
+    report["text_layer_words"] = report.get("text_layer_words", 0) + n
+    return n
+
+
 def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
                keep_meta: bool, keep_ids: bool):
     doc = pymupdf.open(src)
@@ -806,6 +865,8 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
             buf = io.BytesIO()
             im.save(buf, format="PNG")
             new_page.insert_image(rect, stream=buf.getvalue())
+            if TEXT_LAYER and lines:
+                _insert_invisible_text(new_page, lines, boxes, report)
         else:
             segs = collect_segments(page)
             for b in boxes:
@@ -818,6 +879,10 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
                         page.draw_rect(b, color=(0.72, 0.72, 0.72), width=0.5, fill=None)
     if not keep_meta:
         doc.set_metadata({})
+    try:
+        doc.subset_fonts()
+    except Exception:
+        pass
     os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True)
     doc.save(dst, garbage=4, deflate=True, clean=True)
     doc.close()
@@ -1095,7 +1160,7 @@ def default_enabled(mode: str, args) -> set:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    global PLACEHOLDER, SAFE_NAME, BAR_BORDER
+    global PLACEHOLDER, SAFE_NAME, BAR_BORDER, TEXT_LAYER
     ap = argparse.ArgumentParser(description="DoctorHide — обезличивание документов")
     ap.add_argument("inputs", nargs="*", help="файлы, маски (docs\\*.pdf) или папки")
     ap.add_argument("-o", "--out", help="файл результата (для одного входа)")
@@ -1109,6 +1174,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--ocr", default="auto", choices=["auto", "always", "never"])
     ap.add_argument("--dpi", type=int, default=300)
     ap.add_argument("--placeholder", default=PLACEHOLDER)
+    ap.add_argument("--no-text-layer", action="store_true",
+                    help="не добавлять невидимый текстовый слой в сканы")
     ap.add_argument("--no-bar-border", action="store_true",
                     help="плашки без серой обводки (только белая заливка)")
     ap.add_argument("--safe-name", action="store_true",
@@ -1127,6 +1194,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     PLACEHOLDER = args.placeholder
     SAFE_NAME = args.safe_name
     BAR_BORDER = not args.no_bar_border
+    TEXT_LAYER = not args.no_text_layer
 
     files: List[str] = []
     for item in args.inputs:

@@ -253,7 +253,9 @@ def main() -> int:
     if os.path.exists(out_scan):
         text, pages, _ = pdf_text(out_scan)
         check(pages == 1, "страница сохранена", str(pages))
-        check(len(text.strip()) == 0, "текстового слоя не добавлено", f"{len(text)} символов")
+        check(len(text.strip()) > 50, "текстовый слой добавлен", f"{len(text)} символов")
+        left = [b for b in BANNED_DOC if b in text]
+        check(not left, "в текстовом слое нет скрытых данных", f"осталось: {left}")
         shot = os.path.join(WORK, "scan_anon.png")
         pymupdf.open(out_scan)[0].get_pixmap(dpi=200).save(shot)
         whited = whited_pixels(os.path.join(WORK, "doc.png"), shot)
