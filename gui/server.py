@@ -15,14 +15,18 @@ import argparse
 import io
 import json
 import os
+import ipaddress
 import shutil
+import socket
 import sys
 import threading
 import time
 import traceback
 import urllib.parse
+import urllib.request
 import uuid
 import zipfile
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,6 +37,7 @@ WORK = os.path.join(ROOT, "_gui_work")
 IN_DIR = os.path.join(WORK, "in")
 OUT_DIR = os.path.join(WORK, "out")
 MAX_FILES = 100
+MAX_BYTES = 200 * 1024 * 1024
 IMAGE_EXT = D.IMAGE_EXT
 
 FILES: list[dict] = []
@@ -40,8 +45,68 @@ LOCK = threading.Lock()
 RUNNING = {"value": False, "started": 0.0, "finished": 0.0}
 
 
+LOG = deque(maxlen=400)
+
+
 def log(msg: str) -> None:
+    LOG.append({"t": time.strftime("%H:%M:%S"), "m": msg})
     print(msg, flush=True)
+
+
+def _host_allowed(host: str) -> bool:
+    """Разрешаем только публичные адреса: localhost и внутренние сети закрыты."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
+
+
+def _name_from_cd(value: str | None) -> str:
+    if not value:
+        return ""
+    marker = "filename*="
+    if marker in value:
+        tail = value.split(marker, 1)[1].split(";")[0].strip()
+        if "''" in tail:
+            tail = tail.split("''", 1)[1]
+        return urllib.parse.unquote(tail)
+    if "filename=" in value:
+        return value.split("filename=", 1)[1].split(";")[0].strip().strip('"')
+    return ""
+
+
+def _download(url: str) -> tuple[bytes, str]:
+    """Скачивает файл по ссылке. Возвращает (данные, имя)."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("поддерживаются только http и https")
+    if not parsed.hostname or not _host_allowed(parsed.hostname):
+        raise ValueError("адрес ведёт во внутреннюю сеть или не разрешается")
+
+    req = urllib.request.Request(url, headers={"User-Agent": "DoctorHide/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        final = urllib.parse.urlparse(resp.geturl())
+        if final.scheme not in ("http", "https") or not final.hostname or not _host_allowed(final.hostname):
+            raise ValueError("редирект на недопустимый адрес")
+        length = resp.headers.get("Content-Length")
+        if length and length.isdigit() and int(length) > MAX_BYTES:
+            raise ValueError("файл больше 200 МБ")
+        data = resp.read(MAX_BYTES + 1)
+        if len(data) > MAX_BYTES:
+            raise ValueError("файл больше 200 МБ")
+        name = (_name_from_cd(resp.headers.get("Content-Disposition"))
+                or urllib.parse.unquote(os.path.basename(final.path))
+                or "download.bin")
+    return data, os.path.basename(name.replace("\\", "/"))
 
 
 def _reset_dirs() -> None:
@@ -149,6 +214,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        qs = urllib.parse.parse_qs(parsed.query)
 
         if path in ("/", "/index.html"):
             index = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
@@ -172,6 +238,12 @@ class Handler(BaseHTTPRequestHandler):
                 "running": RUNNING["value"],
                 "max": MAX_FILES,
             })
+            return
+
+        if path == "/api/log":
+            since = int((qs.get("since") or ["0"])[0])
+            lines = list(LOG)[since:]
+            self._json(200, {"lines": lines, "total": len(LOG)})
             return
 
         if path.startswith("/api/download/"):
@@ -229,27 +301,38 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"id": fid, "name": name})
             return
 
-        if path == "/api/demo":
-            demo_dir = os.path.join(ROOT, "_private", "_selftest")
-            added = []
-            if os.path.isdir(demo_dir):
-                for name in sorted(os.listdir(demo_dir)):
-                    ext = os.path.splitext(name)[1].lower()
-                    if ext not in ({".pdf", ".docx", ".doc", ".md", ".txt"} | IMAGE_EXT):
-                        continue
-                    with LOCK:
-                        if len(FILES) >= MAX_FILES:
-                            break
-                    fid = uuid.uuid4().hex[:12]
-                    dst = os.path.join(IN_DIR, f"{fid}_{name}")
-                    shutil.copy2(os.path.join(demo_dir, name), dst)
-                    with LOCK:
-                        FILES.append({"id": fid, "name": name, "path": dst,
-                                      "size": os.path.getsize(dst), "ext": ext,
-                                      "status": "queued", "out": None, "error": None,
-                                      "duration": None})
-                    added.append(name)
-            self._json(200, {"added": added})
+        if path == "/api/url":
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                payload = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                self._json(400, {"error": "некорректный запрос"})
+                return
+            url = (payload.get("url") or "").strip()
+            if not url:
+                self._json(400, {"error": "пустая ссылка"})
+                return
+            with LOCK:
+                if len(FILES) >= MAX_FILES:
+                    self._json(409, {"error": f"лимит {MAX_FILES} файлов"})
+                    return
+            try:
+                data, name = _download(url)
+            except Exception as err:  # noqa: BLE001
+                log(f"FAIL ссылка {url}: {err}")
+                self._json(400, {"error": str(err)})
+                return
+            fid = uuid.uuid4().hex[:12]
+            dst = os.path.join(IN_DIR, f"{fid}_{name}")
+            with open(dst, "wb") as f:
+                f.write(data)
+            ext = os.path.splitext(name)[1].lower()
+            with LOCK:
+                FILES.append({"id": fid, "name": name, "path": dst, "size": len(data),
+                              "ext": ext, "status": "queued", "out": None, "error": None,
+                              "duration": None})
+            log(f"+ {name} ({len(data) // 1024} КБ) по ссылке")
+            self._json(200, {"id": fid, "name": name, "size": len(data)})
             return
 
         if path == "/api/run":

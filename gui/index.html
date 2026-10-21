@@ -108,6 +108,10 @@
     font:800 11px/1 var(--mono);letter-spacing:.28em;padding:7px 74px;z-index:6;opacity:.85;
     box-shadow:0 4px 12px rgba(0,0,0,.25)}
   .hint{font:11px/1.4 var(--mono);color:#4d7d63;margin-top:8px}
+  #url{flex:1;min-width:240px;border:1px solid #bfdcc8;border-radius:10px;padding:10px 12px;
+    font:12.5px/1 var(--mono);color:#16402d;background:#fbfefc;outline:none}
+  #url:focus{border-color:#2f6fed;box-shadow:0 0 0 3px rgba(47,111,237,.12)}
+  #url::placeholder{color:#8fae9c}
 </style>
 </head>
 <body>
@@ -131,9 +135,12 @@
     <div class="row">
       <button id="pickFiles">Выбрать файлы</button>
       <button id="pickDir">Выбрать папку</button>
-      <button id="demo">Демо-набор</button>
       <button id="clear">Очистить</button>
       <span class="counter" id="counter">0 / 100</span>
+    </div>
+    <div class="row">
+      <input id="url" type="text" placeholder="https://example.com/документ.pdf — прямая ссылка на файл">
+      <button id="addUrl">Загрузить по ссылке</button>
     </div>
     <div class="list" id="list"></div>
     <div class="hint" id="hint">Очередь пуста. Файлы не покидают машину: всё считается локально.</div>
@@ -262,19 +269,32 @@ const drop = $('#drop');
 drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 drop.addEventListener('click', () => $('#fileInput').click());
 
-// --- демо-набор ---
-$('#demo').onclick = async () => {
-  const res = await fetch('/api/demo', {method:'POST'});
-  const data = await res.json();
-  if (!data.added || !data.added.length){ log('демо-набор не найден', 'err'); return; }
-  for (const name of data.added){
-    const st = await (await fetch('/api/status')).json();
-    const item = st.files.find(f => f.name === name && !queue.some(q=>q.id===f.id));
-    if (item){ queue.push(item); row(item); }
+// --- загрузка по ссылке ---
+async function loadUrl(){
+  const input = $('#url');
+  const url = input.value.trim();
+  if (!url) return;
+  const btn = $('#addUrl');
+  btn.disabled = true;
+  log('запрос: ' + url, 'info');
+  try{
+    const res = await fetch('/api/url', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.status);
+    const item = {id:data.id, name:data.name, size:data.size, status:'queued'};
+    queue.push(item); row(item); refresh();
+    log(`+ ${data.name} (${fmtSize(data.size)}) по ссылке`, 'ok');
+    input.value = '';
+  }catch(err){
+    log('не скачалось: ' + err.message, 'err');
+  }finally{
+    btn.disabled = false;
   }
-  log(`демо-набор: ${data.added.length} файлов`, 'info');
-  refresh();
-};
+}
+$('#addUrl').onclick = loadUrl;
+$('#url').addEventListener('keydown', e => { if (e.key === 'Enter') loadUrl(); });
 
 // --- очистка ---
 $('#clear').onclick = async () => {
@@ -297,7 +317,22 @@ $('#run').onclick = async () => {
   timer = setInterval(poll, 350);
 };
 
+async function pullLog(){
+  try{
+    const d = await (await fetch('/api/log?since=' + logSince)).json();
+    (d.lines || []).forEach(l => {
+      const kind = l.m.startsWith('OK') ? 'ok' : l.m.startsWith('FAIL') ? 'err' : 'info';
+      const line = document.createElement('div');
+      line.innerHTML = `<span class="t">[${l.t}]</span> <span class="${kind}">${l.m}</span>`;
+      logBox.appendChild(line);
+    });
+    logSince = d.total;
+    logBox.scrollTop = logBox.scrollHeight;
+  }catch(e){}
+}
+
 async function poll(){
+  pullLog();
   const st = await (await fetch('/api/status')).json();
   st.files.forEach(f => {
     const local = queue.find(q => q.id === f.id);
@@ -318,6 +353,24 @@ async function poll(){
 log('DoctorHide готов. Все вычисления — на этой машине.', 'info');
 log('ожидание файлов…', 'info');
 refresh();
+
+// восстановление очереди после перезагрузки страницы
+(async function hydrate(){
+  try{
+    const st = await (await fetch('/api/status')).json();
+    if (!st.files || !st.files.length) return;
+    for (const f of st.files){ const item = Object.assign({}, f); queue.push(item); row(item); }
+    refresh();
+    log(`восстановлена очередь: ${st.files.length} файлов`, 'info');
+    pullLog();
+    if (st.running){
+      running = true; t0 = performance.now();
+      $('#ledText').textContent = 'идёт обработка';
+      refresh();
+      timer = setInterval(poll, 350);
+    }
+  }catch(e){ /* сервер недоступен */ }
+})();
 </script>
 </body>
 </html>
