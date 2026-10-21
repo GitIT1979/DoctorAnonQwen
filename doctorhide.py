@@ -1087,9 +1087,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     results = []
     enabled = None
+    missing = 0
     for path in files:
         if not os.path.exists(path):
             print(f"нет файла: {path}", file=sys.stderr)
+            missing += 1
             continue
         rep = process(path, args, enabled)
         if args.keep is not None and enabled is None and (args.keep or args.only):
@@ -1104,12 +1106,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if rep.get("leftover"):
                 print(f"  ВНИМАНИЕ, остались совпадения: {rep['leftover']}")
 
+    if not results:
+        print("ни одного файла не обработано", file=sys.stderr)
+        return 2
+
     if args.report:
         with open(args.report, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
-    return 0
+    return 1 if missing else 0
 
 
 if __name__ == "__main__":
