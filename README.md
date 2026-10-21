@@ -51,6 +51,7 @@ python doctorhide.py "акт.docx"              # DOCX -> акт_anon.md
 python doctorhide.py "паспорт.png"           # картинка -> паспорт_anon.png
 python doctorhide.py "решение.pdf" --mode judicial
 python doctorhide.py "папка/" --report report.json
+python doctorhide.py "заявление.docx" --safe-name  # результат document_anon.md, без имени в названии
 ```
 
 Выбор категорий:

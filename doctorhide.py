@@ -63,6 +63,7 @@ import pymupdf
 from PIL import Image, ImageDraw
 
 PLACEHOLDER = "[censored]"
+SAFE_NAME = False
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 # --------------------------------------------------------------------------- #
@@ -112,7 +113,7 @@ GIVEN_NAMES = set(
 )
 
 CITY_STEMS = [
-    ("Санкт[- ]Петербург", r"[а-яё]{0,2}"), ("СПб", ""), ("Петербург", r"[а-яё]{0,2}"),
+    ("Санкт[- ]Петербург", r"[а-яё]*"), ("СПб", ""), ("Петербург", r"[а-яё]*"),
     ("Москв", r"[а-яё]{0,2}"), ("Новосибирск", r"[а-яё]{0,2}"), ("Екатеринбург", r"[а-яё]{0,2}"),
     ("Казан", r"[ьияюе]{0,2}"), (r"Нижн\w+ Новгород", r"[а-яё]{0,3}"), ("Челябинск", r"[а-яё]{0,2}"),
     ("Самар", r"[аыуе]{0,2}"), ("Омск", r"[а-яё]{0,2}"), ("Ростов", r"[а-яё]{0,3}"),
@@ -222,9 +223,10 @@ RULES: List[Tuple[str, str, str, Optional[str], int]] = [
     ("address", "addr_index", r"(?:индекс\s*[:№]?\s*)?\b\d{6}\b(?=\s*,?\s*(?:г\.|город|обл|область|край|респ))", None, 0),
     ("address", "region",
      r"(?:респ\w*|област\w*|обл\.|кра[йяюе]|округ\w*|АО)\s+[А-ЯЁ][А-Яа-яЁё\-]+(?:\s+[А-ЯЁ][А-Яа-яЁё\-]+)?", None, 0),
+    ("address", "district", r"\b[А-ЯЁ][А-Яа-яЁё\-]+\s+район(?:а|у|е|ом)?(?![а-яё])", None, 0),
     ("address", "city", _CITY, None, 0),
     ("address", "city_label",
-     r"\b(?:г\.|гор\.|город|пос\.|посёлок|пгт|дер\.|деревня|с\.|село|ст-ца|станица|аул)\s*([А-ЯЁ][А-Яа-яЁё\-]+)", None, 1),
+     r"\b(?:г\.|гор\.|город|пос\.|посёлок|пгт|дер\.|деревня|с\.|село|ст-ца|станица|аул)(?!\w)\s*([А-ЯЁ][А-Яа-яЁё\-]+)", None, 1),
     # --- realty ---
     ("realty", "cadastral", r"\b\d{2}:\d{2}:\d{6,7}:\d+\b", None, 0),
     ("realty", "realty_obj",
@@ -286,6 +288,10 @@ RULES: List[Tuple[str, str, str, Optional[str], int]] = [
      r"\b(?:Межрайонн\w+|Межрегиональн\w+|ИФНС|ФНС|Федеральн\w+\s+налогов\w+\s+служб\w+|"
      r"Управлени\w+\s+\w+|Министерств\w+|Департамент\w*|Администраци\w+|"
      r"Пенсионн\w+\s+фонд\w*|Государственн\w+\s+учреждени\w+)\s+[^\n,;]{3,120}", None, 0),
+    ("org", "institution",
+     r"\b(?:ГБОУ|МБОУ|ГКОУ|МКОУ|ГАОУ|МАОУ|СОШ|ООШ|НОШ)\b[^\n,;]{0,70}", None, 0),
+    ("org", "institution_named",
+     r"\b(?:Дворец\w*|Театр\w*|Гимнази\w+|Лице\w+)\s+[А-ЯЁа-яё\-]+(?:\s+[А-ЯЁа-яё\-]+){0,6}", None, 0),
     # --- docno ---
     ("docno", "doc_no", r"№\s*(\d[\d\s\-]{2,})", None, 1),
     ("docno", "long_number", r"\b\d{15,}\b", None, 0),
@@ -446,7 +452,11 @@ def lines_with_offsets(text: str) -> List[Tuple[int, Line]]:
 #  ФИО
 # --------------------------------------------------------------------------- #
 
-PATRONYMIC = re.compile(r"(?:ович|евич|ьевич|иевич|овна|евна|ьевна|иевна|ична|инична)$", re.I)
+PATRONYMIC = re.compile(
+    r"(?:[ое]вич(?:а|у|ем)?|[ое]вн(?:а|ы|е|у)|ьевич(?:а|у|ем)?|ьевн(?:а|ы|е|у)|"
+    r"иевич(?:а|у|ем)?|иевн(?:а|ы|е|у)|иничн(?:а|ы|е|у)|ичн(?:а|ы|е|у))$",
+    re.I,
+)
 SURNAME = re.compile(r"(?:ов|ев|ёв|ин|ын|ский|цкий|ская|цкая|ой|ый|ая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых|son|s|ova|ev|in)$", re.I)
 SURNAME_STRICT = re.compile(r"(?:ов|ев|ёв|ин|ын|ский|цкий|ская|цкая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых)$", re.I)
 NAME_STOP = {"российской", "федерации", "россия", "республики", "области", "края", "района",
@@ -460,7 +470,8 @@ NAME_MARKERS = {"гр", "гр.", "гражданин", "гражданка", "г
 
 
 def _tokens(line: Line):
-    return [(m.start(), m.end(), m.group()) for m in re.finditer(r"[А-Яа-яЁё][А-Яа-яЁё\-]*|\d+", line.text)]
+    return [(m.start(), m.end(), m.group())
+            for m in re.finditer(r"[А-ЯЁ]\.[А-ЯЁ]?\.?|[А-Яа-яЁё][А-Яа-яЁё\-]*|\d+", line.text)]
 
 
 def find_names(line: Line) -> List[Tuple[int, int]]:
@@ -500,8 +511,11 @@ def find_names(line: Line) -> List[Tuple[int, int]]:
                     end = toks[k][1]
             spans.append((a, end))
             continue
-        if re.fullmatch(r"[А-ЯЁ]\.", t) and i > 0 and SURNAME_STRICT.search(toks[i - 1][2].lower()):
-            spans.append((toks[i - 1][0], b))
+        if re.fullmatch(r"[А-ЯЁ]\.(?:[А-ЯЁ]\.)?", t) and i > 0 and SURNAME.search(toks[i - 1][2]):
+            end = b
+            if i + 1 < n and re.fullmatch(r"[А-ЯЁ]\.", toks[i + 1][2]):
+                end = toks[i + 1][1]
+            spans.append((toks[i - 1][0], end))
 
     merged: List[Tuple[int, int]] = []
     for a, b in sorted(spans):
@@ -550,6 +564,8 @@ def collect_hits(lines: List[Line], enabled: set, mode: str, only_ids: Optional[
         for cat, rid, rx, val, grp in compiled:
             for m in rx.finditer(line.text):
                 if val and not validate(val, m.group()):
+                    continue
+                if mode == "judicial" and re.search(r"(?<![а-яё])суд", m.group(), re.I):
                     continue
                 if rid == "gov_body" and re.search(r"Наименование\s+$", line.text[:m.start()]):
                     continue
@@ -877,6 +893,13 @@ def docx_to_md(path: str) -> str:
     return "\n".join(out).strip() + "\n"
 
 
+def _rule_order(rule):
+    """Длинные шаблоны раньше коротких; названия учреждений — раньше городов и адресов."""
+    cat, rid, pat, val, grp = rule
+    priority = 0 if rid.startswith("institution") else 1
+    return (priority, -len(pat))
+
+
 def anonymize_text(text: str, mode: str, enabled: set, keep_ids: bool):
     stats: Dict[str, int] = {}
 
@@ -894,7 +917,7 @@ def anonymize_text(text: str, mode: str, enabled: set, keep_ids: bool):
             return PLACEHOLDER
         return rx.sub(repl, text)
 
-    for cat, rid, pat, val, grp in sorted(RULES, key=lambda r: -len(r[2])):
+    for cat, rid, pat, val, grp in sorted(RULES, key=_rule_order):
         if cat not in enabled:
             continue
         if mode == "judicial" and keep_ids and rid in ID_RULES:
@@ -957,6 +980,8 @@ def ask_categories(found: Dict[str, int]) -> set:
 
 
 def out_name(src: str, ext: str) -> str:
+    if SAFE_NAME:
+        return f"document_anon{ext}"
     base, _ = os.path.splitext(src)
     return f"{base}_anon{ext}"
 
@@ -1044,7 +1069,7 @@ def default_enabled(mode: str, args) -> set:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    global PLACEHOLDER
+    global PLACEHOLDER, SAFE_NAME
     ap = argparse.ArgumentParser(description="DoctorHide — обезличивание документов")
     ap.add_argument("inputs", nargs="*", help="файлы, маски (docs\\*.pdf) или папки")
     ap.add_argument("-o", "--out", help="файл результата (для одного входа)")
@@ -1058,6 +1083,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--ocr", default="auto", choices=["auto", "always", "never"])
     ap.add_argument("--dpi", type=int, default=300)
     ap.add_argument("--placeholder", default=PLACEHOLDER)
+    ap.add_argument("--safe-name", action="store_true",
+                    help="имя результата без исходного названия: document_anon.<ext>")
     ap.add_argument("--keep-meta", action="store_true")
     ap.add_argument("--court-keep-ids", action="store_true",
                     help="в судебных актах не скрывать ИНН/ОГРН/СНИЛС/паспорт")
@@ -1070,6 +1097,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     PLACEHOLDER = args.placeholder
+    SAFE_NAME = args.safe_name
 
     files: List[str] = []
     for item in args.inputs:

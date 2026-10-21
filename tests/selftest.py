@@ -48,6 +48,16 @@ COURT_MD = """РЕШЕНИЕ
 установил:
 """
 
+SCHOOL_MD = """Директору ГБОУ СОШ № 42 Центрального района г. Твери Петровой А.И.
+от Сергеева-Кузнецова Дмитрия Олеговича, паспорт 2812 445566
+
+Заявление
+
+Прошу разрешить Сергееву-Кузнецову Артёму Дмитриевичу, ученику 7 Г класса,
+в связи с его участием в мероприятиях в Театре юношеского творчества Тверского
+городского Дворца творчества юных ранний уход с занятий 15 апреля 2026 года.
+"""
+
 BANNED_DOC = ["Иванов", "Петров", "7707083893", "770701001", "1027700132195",
               "125009", "Москва", "Тверская", "123-45-67", "ivanov@", "4509",
               "123456", "112-233-445", "1 200 000", "40702810123456789012"]
@@ -139,6 +149,9 @@ def main() -> int:
     with open(os.path.join(WORK, "court.md"), "w", encoding="utf-8") as f:
         f.write(COURT_MD)
 
+    with open(os.path.join(WORK, "school.md"), "w", encoding="utf-8") as f:
+        f.write(SCHOOL_MD)
+
     from docx import Document
 
     d = Document()
@@ -201,6 +214,18 @@ def main() -> int:
         check(not missed, "суд и участники сохранены", f"пропало: {missed}")
         hidden = [x for x in ["Москва", "45 лет"] if x in text]
         check(not hidden, "адрес/город/возраст скрыты", f"осталось: {hidden}")
+
+    print("\n== школьное заявление ==")
+    r = run(["school.md"])
+    out_school = os.path.join(WORK, "school_anon.md")
+    check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
+    if os.path.exists(out_school):
+        text = open(out_school, encoding="utf-8").read()
+        banned = ["Петровой", "Сергеев", "Кузнецов", "2812", "445566", "ГБОУ", "СОШ",
+                  "Театр", "Твери"]
+        left = [b for b in banned if b in text]
+        check(not left, "школа, ФИО, паспорт и театр скрыты", f"осталось: {left}")
+        check("Заявление" in text and "7 Г класса" in text, "текст заявления сохранён")
 
     print("\n== docx ==")
     r = run(["doc.docx"])
