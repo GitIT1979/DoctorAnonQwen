@@ -23,7 +23,6 @@ import traceback
 import urllib.parse
 import uuid
 import zipfile
-from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,11 +40,7 @@ LOCK = threading.Lock()
 RUNNING = {"value": False, "started": 0.0, "finished": 0.0}
 
 
-LOG = deque(maxlen=400)
-
-
 def log(msg: str) -> None:
-    LOG.append({"t": time.strftime("%H:%M:%S"), "m": msg})
     print(msg, flush=True)
 
 
@@ -154,7 +149,6 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
-        qs = urllib.parse.parse_qs(parsed.query)
 
         if path in ("/", "/index.html"):
             index = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
@@ -178,12 +172,6 @@ class Handler(BaseHTTPRequestHandler):
                 "running": RUNNING["value"],
                 "max": MAX_FILES,
             })
-            return
-
-        if path == "/api/log":
-            since = int((qs.get("since") or ["0"])[0])
-            lines = list(LOG)[since:]
-            self._json(200, {"lines": lines, "total": len(LOG)})
             return
 
         if path.startswith("/api/download/"):
@@ -247,7 +235,7 @@ class Handler(BaseHTTPRequestHandler):
             if os.path.isdir(demo_dir):
                 for name in sorted(os.listdir(demo_dir)):
                     ext = os.path.splitext(name)[1].lower()
-                    if "_anon" in name or ext not in ({".pdf", ".docx", ".doc", ".md", ".txt"} | IMAGE_EXT):
+                    if ext not in ({".pdf", ".docx", ".doc", ".md", ".txt"} | IMAGE_EXT):
                         continue
                     with LOCK:
                         if len(FILES) >= MAX_FILES:

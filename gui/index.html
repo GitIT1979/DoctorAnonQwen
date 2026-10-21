@@ -53,7 +53,7 @@
   button:hover{background:linear-gradient(#ffffff,#e4f4e9)}
   button:active{transform:translateY(1px);box-shadow:none}
   .counter{margin-left:auto;font:700 12px/1 var(--mono);color:#2c6b4b;letter-spacing:.08em}
-  .list{margin-top:12px;max-height:54vh;overflow:auto;border-top:1px solid #e1f0e6}
+  .list{margin-top:12px;max-height:340px;overflow:auto;border-top:1px solid #e1f0e6}
   .item{display:grid;grid-template-columns:26px 1fr auto auto;gap:9px;align-items:center;
     padding:9px 4px;border-bottom:1px dashed #e4f1e8;font-size:13px}
   .item .ico{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;
@@ -104,7 +104,7 @@
     background:linear-gradient(90deg,#39d17c,#2f6fed);box-shadow:0 0 12px rgba(47,111,237,.45)}
   .stats{display:flex;gap:14px;font:600 11.5px/1 var(--mono);color:#2c6b4b;margin-top:7px;
     letter-spacing:.06em;text-transform:uppercase}
-  .secret{position:fixed;right:-78px;top:150px;transform:rotate(34deg);background:#b3261e;color:#fff;
+  .secret{position:fixed;right:-64px;top:26px;transform:rotate(34deg);background:#b3261e;color:#fff;
     font:800 11px/1 var(--mono);letter-spacing:.28em;padding:7px 74px;z-index:6;opacity:.85;
     box-shadow:0 4px 12px rgba(0,0,0,.25)}
   .hint{font:11px/1.4 var(--mono);color:#4d7d63;margin-top:8px}
@@ -169,7 +169,7 @@
 <script>
 const MAX = 100;
 const queue = [];               // {id,name,status,...}
-let running = false, t0 = 0, timer = null, logSince = 0;
+let running = false, t0 = 0, timer = null;
 
 const $ = s => document.querySelector(s);
 const list = $('#list'), logBox = $('#log'), bar = $('#bar');
@@ -183,19 +183,6 @@ function log(msg, kind='info'){
   line.innerHTML = `<span class="t">[${stamp()}]</span> <span class="${kind}">${msg}</span>`;
   logBox.appendChild(line);
   logBox.scrollTop = logBox.scrollHeight;
-}
-async function pullLog(){
-  try{
-    const d = await (await fetch('/api/log?since=' + logSince)).json();
-    (d.lines || []).forEach(l => {
-      const kind = l.m.startsWith('OK') ? 'ok' : l.m.startsWith('FAIL') ? 'err' : 'info';
-      const line = document.createElement('div');
-      line.innerHTML = `<span class="t">[${l.t}]</span> <span class="${kind}">${l.m}</span>`;
-      logBox.appendChild(line);
-    });
-    logSince = d.total;
-    logBox.scrollTop = logBox.scrollHeight;
-  }catch(e){}
 }
 function fmtSize(n){
   if (n < 1024) return n + ' Б';
@@ -311,7 +298,6 @@ $('#run').onclick = async () => {
 };
 
 async function poll(){
-  pullLog();
   const st = await (await fetch('/api/status')).json();
   st.files.forEach(f => {
     const local = queue.find(q => q.id === f.id);
@@ -332,24 +318,6 @@ async function poll(){
 log('DoctorHide готов. Все вычисления — на этой машине.', 'info');
 log('ожидание файлов…', 'info');
 refresh();
-
-// восстановление очереди после перезагрузки страницы
-(async function hydrate(){
-  try{
-    const st = await (await fetch('/api/status')).json();
-    if (!st.files || !st.files.length) return;
-    for (const f of st.files){ const item = Object.assign({}, f); queue.push(item); row(item); }
-    refresh();
-    log(`восстановлена очередь: ${st.files.length} файлов`, 'info');
-    pullLog();
-    if (st.running){
-      running = true; t0 = performance.now();
-      $('#ledText').textContent = 'идёт обработка';
-      refresh();
-      timer = setInterval(poll, 350);
-    }
-  }catch(e){ /* сервер недоступен — работаем как обычно */ }
-})();
 </script>
 </body>
 </html>
