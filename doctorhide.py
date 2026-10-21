@@ -64,6 +64,7 @@ from PIL import Image, ImageDraw
 
 PLACEHOLDER = "[censored]"
 SAFE_NAME = False
+BAR_BORDER = True
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 # --------------------------------------------------------------------------- #
@@ -583,17 +584,31 @@ def collect_hits(lines: List[Line], enabled: set, mode: str, only_ids: Optional[
     return rects, stats
 
 
-def merge_rects(rects: Sequence[pymupdf.Rect], pad: float = 1.2) -> List[pymupdf.Rect]:
-    out: List[pymupdf.Rect] = []
-    for r in rects:
-        r = pymupdf.Rect(r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad)
-        for i, o in enumerate(out):
-            if o.intersects(r):
-                out[i] = o | r
-                break
-        else:
-            out.append(r)
-    return out
+def merge_rects(rects: Sequence[pymupdf.Rect], pad_x: float = 2.6, pad_y: float = 1.1,
+                row_gap: float = 14.0, row_tol: float = 3.5) -> List[pymupdf.Rect]:
+    """Собирает плашки в сплошные белые полосы.
+
+    Соседние слова одной строки склеиваются, если зазор меньше row_gap, поэтому
+    «ЯКОВЛЕВ-ЗАВАЛЬЕВСКИЙ ВЯЧЕСЛАВ АЛЕКСАНДРОВИЧ» закрывается одной полосой,
+    а не тремя обрубками. Поля по краям увеличены — текст не выглядывает из-под плашки.
+    """
+    boxes = [pymupdf.Rect(r.x0 - pad_x, r.y0 - pad_y, r.x1 + pad_x, r.y1 + pad_y) for r in rects]
+    merged = True
+    while merged:
+        merged = False
+        out: List[pymupdf.Rect] = []
+        for r in boxes:
+            for i, o in enumerate(out):
+                same_row = abs(o.y0 - r.y0) <= row_tol and abs(o.y1 - r.y1) <= row_tol
+                near = (r.x0 - o.x1) <= row_gap and (o.x0 - r.x1) <= row_gap
+                if same_row and near:
+                    out[i] = o | r
+                    merged = True
+                    break
+            else:
+                out.append(r)
+        boxes = out
+    return boxes
 
 
 # --------------------------------------------------------------------------- #
@@ -781,7 +796,9 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
             dr = ImageDraw.Draw(im)
             sc = pix.width / page.rect.width
             for b in boxes:
-                dr.rectangle([b.x0 * sc, b.y0 * sc, b.x1 * sc, b.y1 * sc], fill=(255, 255, 255))
+                dr.rectangle([b.x0 * sc, b.y0 * sc, b.x1 * sc, b.y1 * sc], fill=(255, 255, 255),
+                             outline=(184, 184, 184) if BAR_BORDER else None,
+                             width=1 if BAR_BORDER else 0)
             rect = page.rect
             pno = page.number
             doc.delete_page(pno)
@@ -796,6 +813,9 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
             if boxes:
                 page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)
                 report["restored_lines"] += restore_lines(page, boxes, segs)
+                if BAR_BORDER:
+                    for b in boxes:
+                        page.draw_rect(b, color=(0.72, 0.72, 0.72), width=0.5, fill=None)
     if not keep_meta:
         doc.set_metadata({})
     os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True)
@@ -839,7 +859,9 @@ def render_image(src: str, dst: str, mode: str, enabled: set, keep_ids: bool):
     im = im.convert("RGB")
     dr = ImageDraw.Draw(im)
     for b in boxes:
-        dr.rectangle([b.x0, b.y0, b.x1, b.y1], fill=(255, 255, 255))
+        dr.rectangle([b.x0, b.y0, b.x1, b.y1], fill=(255, 255, 255),
+                     outline=(184, 184, 184) if BAR_BORDER else None,
+                     width=1 if BAR_BORDER else 0)
     save_kwargs = {}
     if fmt in ("JPEG", "JPG"):
         save_kwargs = {"quality": 95, "subsampling": 0}
@@ -1073,7 +1095,7 @@ def default_enabled(mode: str, args) -> set:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    global PLACEHOLDER, SAFE_NAME
+    global PLACEHOLDER, SAFE_NAME, BAR_BORDER
     ap = argparse.ArgumentParser(description="DoctorHide — обезличивание документов")
     ap.add_argument("inputs", nargs="*", help="файлы, маски (docs\\*.pdf) или папки")
     ap.add_argument("-o", "--out", help="файл результата (для одного входа)")
@@ -1087,6 +1109,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--ocr", default="auto", choices=["auto", "always", "never"])
     ap.add_argument("--dpi", type=int, default=300)
     ap.add_argument("--placeholder", default=PLACEHOLDER)
+    ap.add_argument("--no-bar-border", action="store_true",
+                    help="плашки без серой обводки (только белая заливка)")
     ap.add_argument("--safe-name", action="store_true",
                     help="имя результата без исходного названия: document_anon.<ext>")
     ap.add_argument("--keep-meta", action="store_true")
@@ -1102,6 +1126,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     PLACEHOLDER = args.placeholder
     SAFE_NAME = args.safe_name
+    BAR_BORDER = not args.no_bar_border
 
     files: List[str] = []
     for item in args.inputs:
