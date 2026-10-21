@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-DoctorAnon — обезличивание документов (PDF, DOCX, MD/TXT, изображения).
+DoctorHide — обезличивание документов (PDF, DOCX, MD/TXT, изображения).
 
 Что скрывается (по умолчанию — всё, что включено в профиле):
   person     ФИО (фамилия, имя, отчество)
@@ -37,11 +37,11 @@ DoctorAnon — обезличивание документов (PDF, DOCX, MD/TX
   --ask                    показать, что найдено, и спросить, что оставить
 
 Примеры:
-  python doctoranon.py doc.pdf
-  python doctoranon.py doc.pdf --ask
-  python doctoranon.py паспорт.png --keep docno
-  python doctoranon.py решение.pdf --mode judicial
-  python doctoranon.py docs\\*.pdf
+  python doctorhide.py doc.pdf
+  python doctorhide.py doc.pdf --ask
+  python doctorhide.py паспорт.png --keep docno
+  python doctorhide.py решение.pdf --mode judicial
+  python doctorhide.py "docs/*.pdf"
 """
 
 from __future__ import annotations
@@ -1045,7 +1045,7 @@ def default_enabled(mode: str, args) -> set:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     global PLACEHOLDER
-    ap = argparse.ArgumentParser(description="DoctorAnon — обезличивание документов")
+    ap = argparse.ArgumentParser(description="DoctorHide — обезличивание документов")
     ap.add_argument("inputs", nargs="*", help="файлы, маски (docs\\*.pdf) или папки")
     ap.add_argument("-o", "--out", help="файл результата (для одного входа)")
     ap.add_argument("--mode", default="auto", choices=["auto", "judicial", "document"])

@@ -1,4 +1,4 @@
-# DoctorAnon
+# DoctorHide
 
 Обезличивание документов: PDF, DOCX, MD/TXT и изображения.
 
@@ -46,23 +46,23 @@ python -m pip install -r requirements.txt
 ## Использование
 
 ```bash
-python doctoranon.py "документ.pdf"          # PDF -> документ_anon.pdf
-python doctoranon.py "акт.docx"              # DOCX -> акт_anon.md
-python doctoranon.py "паспорт.png"           # картинка -> паспорт_anon.png
-python doctoranon.py "решение.pdf" --mode judicial
-python doctoranon.py "папка/" --report report.json
+python doctorhide.py "документ.pdf"          # PDF -> документ_anon.pdf
+python doctorhide.py "акт.docx"              # DOCX -> акт_anon.md
+python doctorhide.py "паспорт.png"           # картинка -> паспорт_anon.png
+python doctorhide.py "решение.pdf" --mode judicial
+python doctorhide.py "папка/" --report report.json
 ```
 
 Выбор категорий:
 
 ```bash
-python doctoranon.py --list-categories            # что вообще скрывается
-python doctoranon.py doc.pdf --keep org docno     # оставить открытым
-python doctoranon.py doc.pdf --only person address
-python doctoranon.py doc.pdf --ask                # показать найденное и спросить
+python doctorhide.py --list-categories            # что вообще скрывается
+python doctorhide.py doc.pdf --keep org docno     # оставить открытым
+python doctorhide.py doc.pdf --only person address
+python doctorhide.py doc.pdf --ask                # показать найденное и спросить
 ```
 
-Полный список ключей: `python doctoranon.py --help`.
+Полный список ключей: `python doctorhide.py --help`.
 
 ## Проверка
 
@@ -81,7 +81,7 @@ python doctoranon.py doc.pdf --ask                # показать найде�
 ## Структура
 
 ```
-doctoranon.py               основная программа
+doctorhide.py               основная программа
 legacy/anonymize_v1.py      первая версия пайплайна (только PDF/DOCX/MD)
 ПРАВИЛА_АНОНИМИЗАЦИИ.md     правила, категории, ограничения
 examples/                   пример обезличенного документа (без персональных данных)
