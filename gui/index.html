@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DoctorHide — терминал обезличивания</title>
+<style>
+  :root{
+    --bg1:#eaf7ec; --bg2:#d8efdd; --bg3:#c7e6cf;
+    --panel:#0a1410; --panel2:#0e1c16; --line:#1d3a2c;
+    --green:#5cf29b; --green-dim:#2f7f57; --mint:#9ff5c3;
+    --blue:#2f6fed; --blue-hi:#4c86ff; --blue-lo:#16357e;
+    --amber:#ffc857; --red:#ff6b6b; --ink:#0d1f18;
+    --mono:'Consolas','JetBrains Mono','Courier New',monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:'Segoe UI',system-ui,sans-serif; color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #f4fff6 0%, transparent 60%),
+      linear-gradient(160deg,var(--bg1) 0%,var(--bg2) 55%,var(--bg3) 100%);
+    min-height:100vh; padding:18px 22px 26px;
+  }
+  .scan{position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.035) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;opacity:.5}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .logo{display:flex;align-items:center;gap:10px}
+  .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(145deg,#123f6d,#0a1f36);
+    border:1px solid #2b6ea8;display:grid;place-items:center;color:#8fd6ff;font-weight:800;
+    box-shadow:0 3px 0 #08202f,inset 0 1px 0 #3f8fce}
+  h1{font-size:19px;margin:0;letter-spacing:.14em;text-transform:uppercase;color:#123b2a}
+  h1 small{display:block;font-size:10px;letter-spacing:.34em;color:#4d7d63;font-weight:600;margin-top:2px}
+  .led{margin-left:auto;display:flex;align-items:center;gap:8px;font:600 11px/1 var(--mono);
+    letter-spacing:.18em;color:#2c6b4b;text-transform:uppercase}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 3px rgba(92,242,155,.25);animation:pulse 1.6s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  .layout{display:grid;grid-template-columns:minmax(420px,1fr) minmax(360px,.9fr);gap:16px}
+  @media (max-width:980px){.layout{grid-template-columns:1fr}}
+  .card{background:#fff;border-radius:16px;padding:14px;border:1px solid #c5e2cd;
+    box-shadow:0 10px 24px rgba(22,60,40,.08),0 1px 0 #fff inset}
+  .drop{border:2px dashed #93c7a5;border-radius:13px;padding:18px;text-align:center;
+    background:linear-gradient(180deg,#f7fdf8,#eef9f1);transition:.16s;cursor:pointer}
+  .drop.over{border-color:#2f6fed;background:#eef4ff;transform:scale(1.005)}
+  .drop b{display:block;font-size:14px;color:#1c4a33;margin-bottom:4px}
+  .drop span{font-size:12px;color:#5b8a70}
+  .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  button{font:600 12.5px/1 'Segoe UI',sans-serif;border-radius:10px;border:1px solid #bfdcc8;
+    background:linear-gradient(#ffffff,#eef7f0);color:#1d4b34;padding:9px 12px;cursor:pointer;
+    box-shadow:0 2px 0 #cfe6d6;transition:.12s}
+  button:hover{background:linear-gradient(#ffffff,#e4f4e9)}
+  button:active{transform:translateY(1px);box-shadow:none}
+  .counter{margin-left:auto;font:700 12px/1 var(--mono);color:#2c6b4b;letter-spacing:.08em}
+  .list{margin-top:12px;max-height:54vh;overflow:auto;border-top:1px solid #e1f0e6}
+  .item{display:grid;grid-template-columns:26px 1fr auto auto;gap:9px;align-items:center;
+    padding:9px 4px;border-bottom:1px dashed #e4f1e8;font-size:13px}
+  .item .ico{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;
+    font:700 9px/1 var(--mono);color:#fff;background:#4b8f6a}
+  .item .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .sz{font:11px/1 var(--mono);color:#6d9683}
+  .chip{font:700 10px/1 var(--mono);letter-spacing:.08em;padding:6px 8px;border-radius:7px;
+    text-transform:uppercase;border:1px solid transparent}
+  .chip.queued{background:#eef2f0;color:#5d7a6c;border-color:#d7e5dc}
+  .chip.running{background:#fff6dd;color:#9a6a00;border-color:#f0dca4;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.45}}
+  .chip.done{background:#e6fbee;color:#12794a;border-color:#b6e9c9}
+  .chip.error{background:#fdeaea;color:#a11d1d;border-color:#f3c4c4}
+  .item a{font:600 11px/1 'Segoe UI',sans-serif;color:#1d63c9;text-decoration:none}
+  .console{background:var(--panel);border-radius:16px;border:1px solid #1b3b2c;
+    box-shadow:0 12px 28px rgba(5,20,12,.35),inset 0 0 60px rgba(30,120,70,.12);
+    display:flex;flex-direction:column;min-height:420px;overflow:hidden}
+  .console .bar{display:flex;gap:7px;align-items:center;padding:9px 12px;border-bottom:1px solid #17301f;
+    background:linear-gradient(#0e2219,#0a170f);font:600 10.5px/1 var(--mono);letter-spacing:.22em;
+    color:#4f9d74;text-transform:uppercase}
+  .dots{display:flex;gap:5px}.dots i{width:8px;height:8px;border-radius:50%;background:#2a5d41}
+  .dots i:first-child{background:#ff6b6b}.dots i:nth-child(2){background:#ffc857}
+  .dots i:nth-child(3){background:#5cf29b}
+  #log{flex:1;overflow:auto;padding:12px 13px;font:12.5px/1.55 var(--mono);color:#84f0b1;
+    text-shadow:0 0 12px rgba(92,242,155,.25)}
+  #log .t{color:#3f7d5b}
+  #log .ok{color:#7dffb0}
+  #log .err{color:#ff8a8a}
+  #log .info{color:#7fd7ff}
+  #log .cursor{display:inline-block;width:7px;height:13px;background:#5cf29b;
+    animation:caret 1s steps(1) infinite;vertical-align:-2px}
+  @keyframes caret{50%{opacity:0}}
+  footer{margin-top:16px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
+  .big{appearance:none;border:none;cursor:pointer;border-radius:14px;padding:20px 34px;
+    font:800 18px/1 'Segoe UI',sans-serif;letter-spacing:.1em;text-transform:uppercase;
+    color:#fff;background:linear-gradient(180deg,var(--blue-hi),var(--blue));
+    box-shadow:0 9px 0 var(--blue-lo),0 16px 26px rgba(31,90,200,.35),
+               inset 0 1px 0 rgba(255,255,255,.4),inset 0 -2px 0 rgba(0,0,0,.18);
+    transition:.08s;display:flex;align-items:center;gap:12px;justify-content:center}
+  .big:hover{filter:brightness(1.05)}
+  .big:active{transform:translateY(6px);box-shadow:0 3px 0 var(--blue-lo),0 8px 14px rgba(31,90,200,.3)}
+  .big:disabled{filter:grayscale(.35) brightness(.95);cursor:not-allowed;transform:none;
+    box-shadow:0 9px 0 #5b6f92,0 10px 18px rgba(0,0,0,.15)}
+  .big .lock{font-size:20px}
+  .progress{height:12px;border-radius:99px;background:#d5ead9;overflow:hidden;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.12)}
+  #bar{height:100%;width:0%;border-radius:99px;transition:width .25s ease;
+    background:linear-gradient(90deg,#39d17c,#2f6fed);box-shadow:0 0 12px rgba(47,111,237,.45)}
+  .stats{display:flex;gap:14px;font:600 11.5px/1 var(--mono);color:#2c6b4b;margin-top:7px;
+    letter-spacing:.06em;text-transform:uppercase}
+  .secret{position:fixed;right:-78px;top:150px;transform:rotate(34deg);background:#b3261e;color:#fff;
+    font:800 11px/1 var(--mono);letter-spacing:.28em;padding:7px 74px;z-index:6;opacity:.85;
+    box-shadow:0 4px 12px rgba(0,0,0,.25)}
+  .hint{font:11px/1.4 var(--mono);color:#4d7d63;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="scan"></div>
+<div class="secret">TOP SECRET</div>
+
+<header>
+  <div class="logo">
+    <div class="mark">D</div>
+    <h1>DoctorHide<small>redaction terminal · локальный контур</small></h1>
+  </div>
+  <div class="led"><span class="dot"></span><span id="ledText">канал защищён</span></div>
+</header>
+
+<div class="layout">
+  <section class="card">
+    <div class="drop" id="drop">
+      <b>Перетащите файлы или папку сюда</b>
+      <span>PDF · DOCX · MD/TXT · PNG/JPEG/TIFF — до 100 файлов за прогон</span>
+    </div>
+    <div class="row">
+      <button id="pickFiles">Выбрать файлы</button>
+      <button id="pickDir">Выбрать папку</button>
+      <button id="demo">Демо-набор</button>
+      <button id="clear">Очистить</button>
+      <span class="counter" id="counter">0 / 100</span>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="hint" id="hint">Очередь пуста. Файлы не покидают машину: всё считается локально.</div>
+  </section>
+
+  <section class="console">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span> secure log <span style="margin-left:auto">tty1</span></div>
+    <div id="log"></div>
+  </section>
+</div>
+
+<footer>
+  <div>
+    <button class="big" id="run" disabled><span class="lock">🔒</span> Анонимизируй это!</button>
+    <div class="progress" style="margin-top:14px"><div id="bar"></div></div>
+    <div class="stats">
+      <span id="stFiles">файлов: 0</span>
+      <span id="stDone">готово: 0</span>
+      <span id="stTime">время: 0.0 с</span>
+      <span id="stMode">режим: пакетный</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:flex-end">
+    <a id="zip" href="/api/zip" style="display:none;text-decoration:none">
+      <button>Скачать всё .zip</button></a>
+  </div>
+</footer>
+
+<input type="file" id="fileInput" multiple hidden
+       accept=".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp">
+<input type="file" id="dirInput" webkitdirectory directory multiple hidden>
+
+<script>
+const MAX = 100;
+const queue = [];               // {id,name,status,...}
+let running = false, t0 = 0, timer = null, logSince = 0;
+
+const $ = s => document.querySelector(s);
+const list = $('#list'), logBox = $('#log'), bar = $('#bar');
+
+function stamp(){
+  const d = new Date();
+  return d.toTimeString().slice(0,8);
+}
+function log(msg, kind='info'){
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="t">[${stamp()}]</span> <span class="${kind}">${msg}</span>`;
+  logBox.appendChild(line);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+async function pullLog(){
+  try{
+    const d = await (await fetch('/api/log?since=' + logSince)).json();
+    (d.lines || []).forEach(l => {
+      const kind = l.m.startsWith('OK') ? 'ok' : l.m.startsWith('FAIL') ? 'err' : 'info';
+      const line = document.createElement('div');
+      line.innerHTML = `<span class="t">[${l.t}]</span> <span class="${kind}">${l.m}</span>`;
+      logBox.appendChild(line);
+    });
+    logSince = d.total;
+    logBox.scrollTop = logBox.scrollHeight;
+  }catch(e){}
+}
+function fmtSize(n){
+  if (n < 1024) return n + ' Б';
+  if (n < 1048576) return (n/1024).toFixed(0) + ' КБ';
+  return (n/1048576).toFixed(1) + ' МБ';
+}
+function extOf(name){ return (name.split('.').pop() || '').toLowerCase(); }
+
+function row(item){
+  let row = document.getElementById('row-' + item.id);
+  if (!row){
+    row = document.createElement('div');
+    row.className = 'item';
+    row.id = 'row-' + item.id;
+    list.appendChild(row);
+  }
+  const st = item.status || 'queued';
+  const label = {queued:'в очереди', running:'обработка', done:'готово', error:'ошибка'}[st];
+  const link = st === 'done'
+    ? `<a href="/api/download/${item.id}">скачать</a>`
+    : st === 'error' ? `<span title="${item.error||''}" style="color:#a11d1d;font-size:11px">сбой</span>` : '';
+  row.innerHTML = `
+    <div class="ico">${extOf(item.name).slice(0,3).toUpperCase()}</div>
+    <div class="nm" title="${item.name}">${item.name}</div>
+    <div class="sz">${fmtSize(item.size||0)}</div>
+    <div><span class="chip ${st}">${label}</span></div>
+    <div style="grid-column:4;justify-self:end">${link}</div>`;
+  row.style.gridTemplateColumns = '26px 1fr auto auto auto';
+}
+
+async function upload(file){
+  if (queue.length >= MAX){ log(`лимит ${MAX} файлов — «${file.name}» пропущен`, 'err'); return; }
+  try{
+    const res = await fetch('/api/add?name=' + encodeURIComponent(file.name), {
+      method:'POST', body:file
+    });
+    if (!res.ok){ const e = await res.json().catch(()=>({})); throw new Error(e.error||res.status); }
+    const data = await res.json();
+    const item = {id:data.id, name:data.name, size:file.size, status:'queued'};
+    queue.push(item); row(item);
+    log(`+ ${item.name}  (${fmtSize(file.size)})`, 'ok');
+    refresh();
+  }catch(err){ log(`не загрузился ${file.name}: ${err.message}`, 'err'); }
+}
+
+async function addFiles(files){
+  const arr = Array.from(files).slice(0, MAX - queue.length);
+  for (const f of arr) await upload(f);
+}
+
+function refresh(){
+  $('#counter').textContent = `${queue.length} / ${MAX}`;
+  $('#stFiles').textContent = `файлов: ${queue.length}`;
+  const done = queue.filter(f=>f.status==='done'||f.status==='error').length;
+  $('#stDone').textContent = `готово: ${done}`;
+  $('#run').disabled = running || queue.length === 0;
+  if (queue.length) $('#hint').style.display = 'none';
+  bar.style.width = queue.length ? (done/queue.length*100).toFixed(1) + '%' : '0%';
+  const anyDone = queue.some(f=>f.status==='done');
+  $('#zip').style.display = anyDone ? 'inline' : 'none';
+}
+
+// --- выбор файлов ---
+$('#pickFiles').onclick = () => $('#fileInput').click();
+$('#pickDir').onclick = () => $('#dirInput').click();
+$('#fileInput').onchange = e => { addFiles(e.target.files); e.target.value=''; };
+$('#dirInput').onchange = e => { addFiles(e.target.files); e.target.value=''; };
+
+// --- drag&drop ---
+const drop = $('#drop');
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add('over');
+}));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove('over');
+}));
+drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+drop.addEventListener('click', () => $('#fileInput').click());
+
+// --- демо-набор ---
+$('#demo').onclick = async () => {
+  const res = await fetch('/api/demo', {method:'POST'});
+  const data = await res.json();
+  if (!data.added || !data.added.length){ log('демо-набор не найден', 'err'); return; }
+  for (const name of data.added){
+    const st = await (await fetch('/api/status')).json();
+    const item = st.files.find(f => f.name === name && !queue.some(q=>q.id===f.id));
+    if (item){ queue.push(item); row(item); }
+  }
+  log(`демо-набор: ${data.added.length} файлов`, 'info');
+  refresh();
+};
+
+// --- очистка ---
+$('#clear').onclick = async () => {
+  await fetch('/api/clear', {method:'POST'});
+  queue.length = 0; list.innerHTML = ''; logBox.innerHTML = '';
+  running = false; clearInterval(timer);
+  log('очередь очищена', 'info'); refresh();
+};
+
+// --- запуск ---
+$('#run').onclick = async () => {
+  if (running || !queue.length) return;
+  const res = await fetch('/api/run', {method:'POST'});
+  const data = await res.json();
+  if (!res.ok){ log('отказ: ' + (data.error||res.status), 'err'); return; }
+  running = true; t0 = performance.now();
+  $('#ledText').textContent = 'идёт обработка';
+  log(`запуск: ${data.started} файлов`, 'ok');
+  refresh();
+  timer = setInterval(poll, 350);
+};
+
+async function poll(){
+  pullLog();
+  const st = await (await fetch('/api/status')).json();
+  st.files.forEach(f => {
+    const local = queue.find(q => q.id === f.id);
+    if (local){ Object.assign(local, f); row(local); }
+  });
+  $('#stTime').textContent = `время: ${((performance.now()-t0)/1000).toFixed(1)} с`;
+  const done = queue.filter(f=>f.status==='done'||f.status==='error').length;
+  bar.style.width = (done/queue.length*100).toFixed(1) + '%';
+  $('#stDone').textContent = `готово: ${done}`;
+  if (!st.running && done >= queue.length){
+    clearInterval(timer); running = false;
+    $('#ledText').textContent = 'канал защищён';
+    log(`прогон завершён: ${done} из ${queue.length}`, 'ok');
+    refresh();
+  }
+}
+
+log('DoctorHide готов. Все вычисления — на этой машине.', 'info');
+log('ожидание файлов…', 'info');
+refresh();
+
+// восстановление очереди после перезагрузки страницы
+(async function hydrate(){
+  try{
+    const st = await (await fetch('/api/status')).json();
+    if (!st.files || !st.files.length) return;
+    for (const f of st.files){ const item = Object.assign({}, f); queue.push(item); row(item); }
+    refresh();
+    log(`восстановлена очередь: ${st.files.length} файлов`, 'info');
+    pullLog();
+    if (st.running){
+      running = true; t0 = performance.now();
+      $('#ledText').textContent = 'идёт обработка';
+      refresh();
+      timer = setInterval(poll, 350);
+    }
+  }catch(e){ /* сервер недоступен — работаем как обычно */ }
+})();
+</script>
+</body>
+</html>

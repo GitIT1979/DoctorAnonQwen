@@ -6,3 +6,4 @@ _tools/
 *.pyc
 __pycache__/
 _private/
+_gui_work/
