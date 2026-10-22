@@ -37,6 +37,7 @@ WORK = os.path.join(ROOT, "_gui_work")
 IN_DIR = os.path.join(WORK, "in")
 OUT_DIR = os.path.join(WORK, "out")
 MAX_FILES = 100
+NAME_COUNTER = {"n": 0}
 MAX_BYTES = 200 * 1024 * 1024
 IMAGE_EXT = D.IMAGE_EXT
 
@@ -107,6 +108,14 @@ def _download(url: str) -> tuple[bytes, str]:
                 or urllib.parse.unquote(os.path.basename(final.path))
                 or "download.bin")
     return data, os.path.basename(name.replace("\\", "/"))
+
+
+def safe_name(ext: str) -> str:
+    """Нейтральное имя: document_01.pdf — в названии не остаётся персональных данных."""
+    with LOCK:
+        NAME_COUNTER["n"] += 1
+        n = NAME_COUNTER["n"]
+    return f"document_{n:02d}{ext}"
 
 
 def _reset_dirs() -> None:
@@ -282,8 +291,10 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
 
         if path == "/api/add":
-            name = (qs.get("name") or ["file"])[0]
-            name = os.path.basename(name.replace("\\", "/"))
+            original = (qs.get("name") or ["file"])[0]
+            original = os.path.basename(original.replace("\\", "/"))
+            keep = (qs.get("keepname") or ["0"])[0] == "1"
+            name = original if keep else safe_name(os.path.splitext(original)[1].lower())
             with LOCK:
                 if len(FILES) >= MAX_FILES:
                     self._json(409, {"error": f"лимит {MAX_FILES} файлов"})
@@ -295,9 +306,9 @@ class Handler(BaseHTTPRequestHandler):
                 f.write(data)
             ext = os.path.splitext(name)[1].lower()
             with LOCK:
-                FILES.append({"id": fid, "name": name, "path": dst, "size": len(data),
-                              "ext": ext, "status": "queued", "out": None, "error": None,
-                              "duration": None})
+                FILES.append({"id": fid, "name": name, "orig": original, "path": dst,
+                              "size": len(data), "ext": ext, "status": "queued", "out": None,
+                              "error": None, "duration": None})
             self._json(200, {"id": fid, "name": name})
             return
 
@@ -322,15 +333,18 @@ class Handler(BaseHTTPRequestHandler):
                 log(f"FAIL ссылка {url}: {err}")
                 self._json(400, {"error": str(err)})
                 return
+            original = name
+            ext = os.path.splitext(original)[1].lower()
+            keep = bool(payload.get("keep_name"))
+            name = original if keep else safe_name(ext)
             fid = uuid.uuid4().hex[:12]
             dst = os.path.join(IN_DIR, f"{fid}_{name}")
             with open(dst, "wb") as f:
                 f.write(data)
-            ext = os.path.splitext(name)[1].lower()
             with LOCK:
-                FILES.append({"id": fid, "name": name, "path": dst, "size": len(data),
-                              "ext": ext, "status": "queued", "out": None, "error": None,
-                              "duration": None})
+                FILES.append({"id": fid, "name": name, "orig": original, "path": dst,
+                              "size": len(data), "ext": ext, "status": "queued", "out": None,
+                              "error": None, "duration": None})
             log(f"+ {name} ({len(data) // 1024} КБ) по ссылке")
             self._json(200, {"id": fid, "name": name, "size": len(data)})
             return

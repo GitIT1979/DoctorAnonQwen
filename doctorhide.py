@@ -232,7 +232,7 @@ RULES: List[Tuple[str, str, str, Optional[str], int]] = [
     ("address", "district", r"\b[А-ЯЁ][А-Яа-яЁё\-]+\s+район(?:а|у|е|ом)?(?![а-яё])", None, 0),
     ("address", "city", _CITY, None, 0),
     ("address", "city_label",
-     r"\b(?:г\.|гор\.|город|пос\.|посёлок|пгт|дер\.|деревня|с\.|село|ст-ца|станица|аул)(?!\w)\s*([А-ЯЁ][А-Яа-яЁё\-]+)", None, 1),
+     r"\b(?:(?:г|гор|с)\.|(?:город|пос|посёлок|пгт|дер|деревня|село|ст-ца|станица|аул)\.?)(?![а-яё])\s*([А-ЯЁ][А-Яа-яЁё\-]+)", None, 1),
     # --- realty ---
     ("realty", "cadastral", r"\b\d{2}:\d{2}:\d{6,7}:\d+\b", None, 0),
     ("realty", "realty_obj",
@@ -294,6 +294,15 @@ RULES: List[Tuple[str, str, str, Optional[str], int]] = [
      r"\b(?:Межрайонн\w+|Межрегиональн\w+|ИФНС|ФНС|Федеральн\w+\s+налогов\w+\s+служб\w+|"
      r"Управлени\w+\s+\w+|Министерств\w+|Департамент\w*|Администраци\w+|"
      r"Пенсионн\w+\s+фонд\w*|Государственн\w+\s+учреждени\w+)\s+[^\n,;]{3,120}", None, 0),
+    ("org", "university",
+     r"\b(?:ФГБОУ|ФГАОУ|ФГБУ|ГБОУ)?\s*(?:[А-ЯЁ][А-Яа-яЁё\-]+\s+){0,5}"
+     r"(?:университет\w*|институт\w*|академи\w+|колледж\w*|техникум\w*|училищ\w+)\b[^\n]{0,60}",
+     None, 0),
+    ("docno", "reg_number",
+     r"(?:регистрационн\w+|реестров\w+|регистров\w+)\s+номер\w*\s*[:№]?[\s\S]{0,15}?(\d[\d\s\-/]*)", None, 1),
+    ("docno", "doc_series", r"\b\d{6}\s?\d{7}\b", None, 0),
+    ("identity", "issue_date",
+     r"(?:дата\s+выдачи|выдан\w*)\s*[:—-]?\s*([^\n]{1,60})", None, 1),
     ("org", "institution",
      r"\b(?:ГБОУ|МБОУ|ГКОУ|МКОУ|ГАОУ|МАОУ|СОШ|ООШ|НОШ)\b[^\n,;]{0,70}", None, 0),
     ("org", "institution_named",
@@ -463,8 +472,8 @@ PATRONYMIC = re.compile(
     r"иевич(?:а|у|ем)?|иевн(?:а|ы|е|у)|иничн(?:а|ы|е|у)|ичн(?:а|ы|е|у))$",
     re.I,
 )
-SURNAME = re.compile(r"(?:ов|ев|ёв|ин|ын|ова|ева|ёва|ина|ына|ский|цкий|ская|цкая|ой|ый|ая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых|son|s|ova|ev|in)$", re.I)
-SURNAME_STRICT = re.compile(r"(?:ов|ев|ёв|ин|ын|ова|ева|ёва|ина|ына|ский|цкий|ская|цкая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых)$", re.I)
+SURNAME = re.compile(r"(?:ов|ев|ёв|ин|ын|ова|ева|ёва|ина|ына|ский|цкий|ская|цкая|ой|ый|ая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых|як|ак|ец|son|s|ova|ev|in)$", re.I)
+SURNAME_STRICT = re.compile(r"(?:ов|ев|ёв|ин|ын|ова|ева|ёва|ина|ына|ский|цкий|ская|цкая|ко|ук|юк|ян|дзе|швили|енко|чук|ич|их|ых|як|ак|ец)$", re.I)
 NAME_STOP = {"российской", "федерации", "россия", "республики", "области", "края", "района",
              "города", "инспекции", "службы", "налоговой", "федеральной", "россии", "город",
              "улица", "государства", "паспорт", "справка", "сведения", "заявление"}
@@ -473,6 +482,18 @@ NAME_MARKERS = {"гр", "гр.", "гражданин", "гражданка", "г
                 "секретаря", "прокурор", "прокурора", "эксперт", "эксперта", "свидетель",
                 "свидетеля", "истец", "истца", "ответчик", "ответчика", "заявитель", "заявителя",
                 "mr", "mrs", "ms", "dr"}
+
+
+HOMO = str.maketrans({
+    "A": "А", "B": "В", "C": "С", "E": "Е", "H": "Н", "K": "К", "M": "М",
+    "O": "О", "P": "Р", "T": "Т", "X": "Х", "Y": "У",
+    "a": "а", "c": "с", "e": "е", "o": "о", "p": "р", "x": "х", "y": "у",
+})
+
+
+def _cyr(s: str) -> str:
+    """Латинские двойники -> кириллица. Длины совпадают, смещения не едут."""
+    return s.translate(HOMO)
 
 
 def _tokens(line: Line):
@@ -486,10 +507,10 @@ def find_names(line: Line) -> List[Tuple[int, int]]:
     spans: List[Tuple[int, int]] = []
 
     def name_tok(t: str) -> bool:
-        return bool(re.fullmatch(r"[А-ЯЁ][А-Яа-яЁё\-]+", t)) and len(t) > 1
+        return bool(re.fullmatch(r"[А-ЯЁ][А-Яа-яЁё\-]+", _cyr(t))) and len(t) > 1
 
     for i, (a, b, t) in enumerate(toks):
-        low = t.lower()
+        low = _cyr(t).lower()
         if low in NAME_STOP:
             continue
         if PATRONYMIC.search(low) and name_tok(t):
@@ -597,6 +618,47 @@ def collect_hits(lines: List[Line], enabled: set, mode: str, only_ids: Optional[
                     for r in line.rects_for(m.start(), m.end()):
                         rects.append((r, "birth"))
                     stats["birth"] = stats.get("birth", 0) + 1
+    if "person" in enabled and only_ids is None and not keep_ids:
+        for i in range(len(lines) - 1):
+            l1, l2 = lines[i], lines[i + 1]
+            if not l1.words or len(l2.words) < 2:
+                continue
+            last = _cyr(l1.words[-1].text.strip(".,;:"))
+            second = _cyr(l2.words[1].text.strip(".,;:"))
+            if SURNAME_STRICT.search(last.lower()) and PATRONYMIC.search(second.lower()):
+                for r in (l1.words[-1].rect, l2.words[0].rect, l2.words[1].rect):
+                    rects.append((r, "person"))
+                stats["person"] = stats.get("person", 0) + 1
+
+    # подпись без значения, а само значение — на следующей строке (частый случай в сканах)
+    if not keep_ids:
+        labels = (
+            ("reg_number", r"(?:регистрационн|реестров|регистров)\w*\s+номер"),
+            ("issue_date", r"(?:дата\s+выдачи|выдан)\w*"),
+        )
+        for i, line in enumerate(lines[:-1]):
+            for rid, pat in labels:
+                if not re.search(pat, line.text, re.I):
+                    continue
+                if any(cat not in enabled for cat in (("docno",) if rid == "reg_number" else ("identity",))):
+                    continue
+                if re.search(r"\d", line.text):
+                    continue
+                for nxt in lines[i + 1:i + 3]:
+                    if not nxt.text.strip():
+                        continue
+                    if rid == "issue_date":
+                        for w in nxt.words:
+                            rects.append((w.rect, "identity"))
+                    else:
+                        m = re.search(r"\d[\d\s\-/]{0,30}", nxt.text)
+                        if not m:
+                            continue
+                        for r in nxt.rects_for(m.start(), m.end()):
+                            rects.append((r, "docno"))
+                    stats["docno" if rid == "reg_number" else "identity"] =                         stats.get("docno" if rid == "reg_number" else "identity", 0) + 1
+                    break
+
     return rects, stats
 
 
@@ -825,6 +887,45 @@ def _insert_invisible_text(page, lines, boxes, report) -> int:
     return n
 
 
+def _looks_like_code(im) -> bool:
+    """Похоже на QR/штрихкод: почти чёрно-белая картинка с плотным рисунком."""
+    g = im.convert("L")
+    w, h = g.size
+    if w < 24 or h < 24:
+        return False
+    hist = g.histogram()
+    total = float(w * h)
+    dark = sum(hist[:70]) / total
+    light = sum(hist[186:]) / total
+    if dark + light < 0.90:
+        return False
+    ratio = w / float(h)
+    if 0.72 <= ratio <= 1.40 and dark >= 0.10:
+        return True
+    if ratio >= 2.0 and dark >= 0.12:
+        return True
+    return False
+
+
+def code_rects(page) -> List[pymupdf.Rect]:
+    """Находит вставленные в страницу QR-коды и штрихкоды."""
+    out: List[pymupdf.Rect] = []
+    for img in page.get_images(full=True):
+        xref = img[0]
+        try:
+            pix = pymupdf.Pixmap(page.parent, xref)
+            if pix.n > 4:
+                pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
+            im = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        except Exception:
+            continue
+        if not _looks_like_code(im):
+            continue
+        for r in page.get_image_rects(xref):
+            out.append(r)
+    return out
+
+
 def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
                keep_meta: bool, keep_ids: bool):
     doc = pymupdf.open(src)
@@ -843,6 +944,11 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
             for pr in passport_pairs(words):
                 rects.append((pr, "identity"))
                 stats["identity"] = stats.get("identity", 0) + 1
+        if "docno" in enabled:
+            codes = code_rects(page)
+            if codes:
+                rects.extend((r, "qr") for r in codes)
+                stats["qr"] = stats.get("qr", 0) + len(codes)
         boxes = merge_rects([r for r, _ in rects])
         report["boxes"] += len(boxes)
         for k, v in stats.items():

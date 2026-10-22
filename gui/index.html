@@ -112,6 +112,10 @@
     font:12.5px/1 var(--mono);color:#16402d;background:#fbfefc;outline:none}
   #url:focus{border-color:#2f6fed;box-shadow:0 0 0 3px rgba(47,111,237,.12)}
   #url::placeholder{color:#8fae9c}
+  .chk{display:flex;gap:8px;align-items:center;margin-top:9px;font:12px/1.3 'Segoe UI',sans-serif;
+    color:#31614a;user-select:none;cursor:pointer}
+  .chk input{width:15px;height:15px;accent-color:#2f6fed;cursor:pointer}
+  .chk b{font-family:var(--mono);font-weight:700;color:#1d4b34}
 </style>
 </head>
 <body>
@@ -142,6 +146,8 @@
       <input id="url" type="text" placeholder="https://example.com/документ.pdf — прямая ссылка на файл">
       <button id="addUrl">Загрузить по ссылке</button>
     </div>
+    <label class="chk"><input type="checkbox" id="anonNames" checked>
+      обезличивать имена файлов — в очередь попадут как <b>document_01.pdf</b></label>
     <div class="list" id="list"></div>
     <div class="hint" id="hint">Очередь пуста. Файлы не покидают машину: всё считается локально.</div>
   </section>
@@ -223,7 +229,8 @@ function row(item){
 async function upload(file){
   if (queue.length >= MAX){ log(`лимит ${MAX} файлов — «${file.name}» пропущен`, 'err'); return; }
   try{
-    const res = await fetch('/api/add?name=' + encodeURIComponent(file.name), {
+    const keepName = $('#anonNames').checked ? '0' : '1';
+    const res = await fetch('/api/add?name=' + encodeURIComponent(file.name) + '&keepname=' + keepName, {
       method:'POST', body:file
     });
     if (!res.ok){ const e = await res.json().catch(()=>({})); throw new Error(e.error||res.status); }
@@ -279,7 +286,8 @@ async function loadUrl(){
   log('запрос: ' + url, 'info');
   try{
     const res = await fetch('/api/url', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url})
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url, keep_name: !$('#anonNames').checked})
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.status);
