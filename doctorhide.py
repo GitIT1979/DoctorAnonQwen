@@ -64,6 +64,8 @@ from PIL import Image, ImageDraw
 
 PLACEHOLDER = "[censored]"
 SAFE_NAME = False
+KEEP_NAME = False
+NAME_COUNTER = {"n": 0}
 BAR_BORDER = True
 TEXT_LAYER = True
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
@@ -1284,10 +1286,13 @@ def ask_categories(found: Dict[str, int]) -> set:
 
 
 def out_name(src: str, ext: str) -> str:
-    if SAFE_NAME:
-        return f"document_anon{ext}"
-    base, _ = os.path.splitext(src)
-    return f"{base}_anon{ext}"
+    """Имя результата: по умолчанию без исходного названия, чтобы не утекали ФИО."""
+    if KEEP_NAME:
+        base, _ = os.path.splitext(src)
+        return f"{base}_anon{ext}"
+    with_lock = NAME_COUNTER
+    with_lock["n"] += 1
+    return f"document_{with_lock['n']:02d}_anon{ext}"
 
 
 def process(path: str, args, enabled: Optional[set] = None):
@@ -1377,7 +1382,7 @@ def default_enabled(mode: str, args) -> set:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    global PLACEHOLDER, SAFE_NAME, BAR_BORDER, TEXT_LAYER
+    global PLACEHOLDER, SAFE_NAME, BAR_BORDER, TEXT_LAYER, KEEP_NAME
     ap = argparse.ArgumentParser(description="DoctorHide — обезличивание документов")
     ap.add_argument("inputs", nargs="*", help="файлы, маски (docs\\*.pdf) или папки")
     ap.add_argument("-o", "--out", help="файл результата (для одного входа)")
@@ -1395,8 +1400,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="не добавлять невидимый текстовый слой в сканы")
     ap.add_argument("--no-bar-border", action="store_true",
                     help="плашки без серой обводки (только белая заливка)")
+    ap.add_argument("--keep-name", action="store_true",
+                    help="сохранить исходное название файла в имени результата")
     ap.add_argument("--safe-name", action="store_true",
-                    help="имя результата без исходного названия: document_anon.<ext>")
+                    help="оставлено для совместимости: имена и так обезличиваются")
     ap.add_argument("--keep-meta", action="store_true")
     ap.add_argument("--court-keep-ids", action="store_true",
                     help="в судебных актах не скрывать ИНН/ОГРН/СНИЛС/паспорт")
@@ -1410,6 +1417,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     PLACEHOLDER = args.placeholder
     SAFE_NAME = args.safe_name
+    KEEP_NAME = args.keep_name
     BAR_BORDER = not args.no_bar_border
     TEXT_LAYER = not args.no_text_layer
 

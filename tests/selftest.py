@@ -71,8 +71,9 @@ def check(ok: bool, name: str, detail: str = "") -> None:
     print(f"[{mark}] {name}" + (f" — {detail}" if detail and (VERBOSE or not ok) else ""))
 
 
-def run(args, stdin_text=None):
-    return subprocess.run([sys.executable, APP] + args, cwd=WORK, capture_output=True,
+def run(args, stdin_text=None, keep_name=True):
+    tail = ["--keep-name"] if keep_name and "-o" not in args else []
+    return subprocess.run([sys.executable, APP] + args + tail, cwd=WORK, capture_output=True,
                           text=True, encoding="utf-8", errors="replace", input=stdin_text)
 
 
@@ -282,6 +283,12 @@ def main() -> int:
     if os.path.exists(os.path.join(WORK, "ask.md")):
         text = open(os.path.join(WORK, "ask.md"), encoding="utf-8").read()
         check("Иванов Иван Иванович" in text, "--ask учитывает ответ")
+
+    print("\n== имена файлов ==")
+    r = run(["doc.pdf"], keep_name=False)
+    named = [f for f in os.listdir(WORK) if f.startswith("document_") and f.endswith("_anon.pdf")]
+    check(r.returncode == 0 and bool(named), "результат назван без исходных данных",
+          str(named[:2]))
 
     print("\n== отчёт и ошибки ==")
     r = run(["doc.md", "-o", "rep.md", "--report", "report.json"])
