@@ -907,6 +907,113 @@ def _looks_like_code(im) -> bool:
     return False
 
 
+def _qr_scan_rects(page: pymupdf.Page, dpi: int = 200):
+    """Ищет QR (по трём маркерам 1:1:3:1:1) и штрихкоды (по повторяющимся вертикальным полосам).
+
+    Возвращает прямоугольники в координатах страницы. Метод эвристический: ложные
+    срабатывания отсекаются требованиями к квадратности области и числу маркеров.
+    """
+    try:
+        pix = page.get_pixmap(dpi=dpi, colorspace=pymupdf.csGRAY, alpha=False)
+    except Exception:
+        return []
+    W, H = pix.width, pix.height
+    if W < 100 or H < 100:
+        return []
+    data = pix.samples
+    stride = pix.stride
+
+    def is_dark(x, y):
+        return data[y * stride + x] < 128
+
+    # --- QR: ищем строки с пропорцией 1:1:3:1:1 ---
+    centers = []
+    step = 2
+    for y in range(0, H, step):
+        runs = []
+        prev = False
+        start = 0
+        for x in range(W):
+            cur = is_dark(x, y)
+            if cur != prev:
+                if prev:
+                    runs.append((start, x - 1, x - start))
+                start = x
+                prev = cur
+        if prev:
+            runs.append((start, W - 1, W - start))
+
+        for i in range(len(runs) - 4):
+            a, b, c, d, e = runs[i:i + 5]
+            unit = (a[2] + b[2] + d[2] + e[2]) / 4.0
+            if unit < 1.5 or unit > 22:
+                continue
+            if abs(a[2] - unit) > unit * 0.6 or abs(b[2] - unit) > unit * 0.6:
+                continue
+            if abs(c[2] - unit * 3) > unit * 1.2:
+                continue
+            if abs(d[2] - unit) > unit * 0.6 or abs(e[2] - unit) > unit * 0.6:
+                continue
+            centers.append(((a[0] + e[1]) // 2, y, unit * 7))
+
+    # --- кластеризация маркеров ---
+    groups = []
+    for cx, cy, size in centers:
+        for g in groups:
+            if abs(g["x"] - cx) < size and abs(g["y"] - cy) < size:
+                g["x"] = (g["x"] + cx) // 2
+                g["y"] = (g["y"] + cy) // 2
+                g["n"] += 1
+                g["size"] = max(g["size"], size)
+                break
+        else:
+            groups.append({"x": cx, "y": cy, "n": 1, "size": size})
+
+    scale = page.rect.width / float(W)
+    rects = []
+    solid = [g for g in groups if g["n"] >= 3]
+    if len(solid) >= 3:
+        xs = [g["x"] for g in solid]
+        ys = [g["y"] for g in solid]
+        pad = max(g["size"] for g in solid) * 0.9
+        x0, x1 = min(xs) - pad, max(xs) + pad
+        y0, y1 = min(ys) - pad, max(ys) + pad
+        if x1 > x0 and y1 > y0 and 0.6 <= (x1 - x0) / float(y1 - y0) <= 1.7:
+            rects.append(pymupdf.Rect(x0 * scale, y0 * scale, x1 * scale, y1 * scale))
+
+    # --- штрихкод: одинаковый узор полос в соседних строках ---
+    def row_signature(y):
+        sig = []
+        prev = False
+        run = 0
+        for x in range(W):
+            cur = is_dark(x, y)
+            if cur == prev:
+                run += 1
+            else:
+                sig.append("1" if prev else "0")
+                prev = cur
+                run = 1
+        return "".join(sig)
+
+    prev_sig, streak, start_y = None, 0, 0
+    for y in range(0, H, 2):
+        sig = row_signature(y)
+        if sig == prev_sig and 20 <= len(sig) <= 400:
+            if streak == 0:
+                start_y = y
+            streak += 1
+        else:
+            if streak >= 25:
+                rects.append(pymupdf.Rect(0, start_y * scale, W * scale, y * scale))
+            streak = 0
+        prev_sig = sig
+    if streak >= 25:
+        rects.append(pymupdf.Rect(0, start_y * scale, W * scale, H * scale))
+
+    return rects
+
+
 def code_rects(page) -> List[pymupdf.Rect]:
     """Находит вставленные в страницу QR-коды и штрихкоды."""
     out: List[pymupdf.Rect] = []
@@ -922,6 +1029,8 @@ def code_rects(page) -> List[pymupdf.Rect]:
         if not _looks_like_code(im):
             continue
         for r in page.get_image_rects(xref):
+            if r.width * r.height > page.rect.width * page.rect.height * 0.5:
+                continue  # это сам скан страницы, а не вставленный код
             out.append(r)
     return out
 
@@ -946,6 +1055,8 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
                 stats["identity"] = stats.get("identity", 0) + 1
         if "docno" in enabled:
             codes = code_rects(page)
+            if scanned:
+                codes = codes + _qr_scan_rects(page, min(dpi, 250))
             if codes:
                 rects.extend((r, "qr") for r in codes)
                 stats["qr"] = stats.get("qr", 0) + len(codes)
