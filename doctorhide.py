@@ -66,6 +66,7 @@ PLACEHOLDER = "[censored]"
 SAFE_NAME = False
 KEEP_NAME = False
 NAME_COUNTER = {"n": 0}
+CURRENT = {"enabled": None, "mode": "document"}
 BAR_BORDER = True
 TEXT_LAYER = True
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
@@ -1285,14 +1286,84 @@ def ask_categories(found: Dict[str, int]) -> set:
     return enabled
 
 
+NAME_DATE = re.compile(r"\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\b|\b(?:19|20)\d{2}\b")
+# уменьшительные имена, которых нет в справочнике полных имён
+NAME_HINTS = re.compile(
+    r"\b(?:Саш|Маш|Миш|Пет|Ван|Дим|Кол|Ол|Лен|Тан|Наташ|Сер[её]ж|Андрюш|Юр|Вит|Вов|"
+    r"Л[её]ш|Гриш|Даш|Кат|Сон|Лид|Гал|Вер|Над|Люб|Свет|Ирин|Павл|Слав|Стас|Тол|Фед|"
+    r"Эдик|Игор|Оксан|Полин|Алин|Ксюш|Юл)\w*",
+    re.I,
+)
+
+
+def sanitize_filename(stem: str, enabled: set, mode: str):
+    """Убирает из имени файла то же, что скрываем в тексте, и даты.
+
+    Возвращает (новое_имя, было_ли_что_убирать).
+    """
+    spans = []
+    for cat, rid, pat, val, grp in RULES:
+        if cat not in enabled:
+            continue
+        if mode == "judicial" and rid in ID_RULES:
+            continue
+        try:
+            rx = re.compile(pat, re.I)
+        except re.error:
+            continue
+        for m in rx.finditer(stem):
+            if val and not validate(val, m.group()):
+                continue
+            a, b = (m.start(grp), m.end(grp)) if grp else (m.start(), m.end())
+            if a < 0 or b < 0:
+                a, b = m.start(), m.end()
+            spans.append((a, b))
+    for m in NAME_DATE.finditer(stem):
+        spans.append((m.start(), m.end()))
+    for a, b in find_names(Line(stem, [], [])):
+        spans.append((a, b))
+    for m in NAME_HINTS.finditer(stem):
+        if m.group()[:1].isupper():
+            spans.append((m.start(), m.end()))
+    if not spans:
+        return stem, False
+
+    spans.sort()
+    merged = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+
+    parts, cur = [], 0
+    for a, b in merged:
+        parts.append(stem[cur:a])
+        cur = b
+    parts.append(stem[cur:])
+    clean = " ".join("".join(parts).replace("_", " ").split())
+    clean = re.sub(r"^[\s\-–—.,;:]+|[\s\-–—.,;:]+$", "", clean)
+    if len(re.sub(r"\W", "", clean)) < 3:
+        clean = "document"
+    return clean, True
+
+
+def output_name(name: str, ext: str, enabled: set, mode: str) -> str:
+    """Итоговое имя: чистое остаётся с _anon, изменённое — с _hidden."""
+    stem = os.path.splitext(name)[0]
+    clean, changed = sanitize_filename(stem, enabled, mode)
+    return f"{clean}_hidden{ext}" if changed else f"{stem}_anon{ext}"
+
+
 def out_name(src: str, ext: str) -> str:
-    """Имя результата: по умолчанию без исходного названия, чтобы не утекали ФИО."""
+    """Имя результата по правилу: чистое имя -> _anon, изменённое -> _hidden."""
+    base = os.path.basename(src)
     if KEEP_NAME:
-        base, _ = os.path.splitext(src)
-        return f"{base}_anon{ext}"
-    with_lock = NAME_COUNTER
-    with_lock["n"] += 1
-    return f"document_{with_lock['n']:02d}_anon{ext}"
+        stem = os.path.splitext(base)[0]
+        return f"{stem}_anon{ext}"
+    enabled = CURRENT.get("enabled") or set(CATEGORIES)
+    mode = CURRENT.get("mode") or "document"
+    return output_name(base, ext, enabled, mode)
 
 
 def process(path: str, args, enabled: Optional[set] = None):
@@ -1310,6 +1381,7 @@ def process(path: str, args, enabled: Optional[set] = None):
         if args.ask:
             _, found = scan_pdf(path, mode, enabled, args.ocr, args.dpi, args.court_keep_ids)
             enabled = ask_categories(found)
+        CURRENT["enabled"], CURRENT["mode"] = enabled, mode
         dst = args.out or out_name(path, ".pdf")
         if not dst.lower().endswith(".pdf"):
             fixed = os.path.splitext(dst)[0] + ".pdf"
@@ -1325,6 +1397,7 @@ def process(path: str, args, enabled: Optional[set] = None):
 
     if ext in IMAGE_EXT:
         enabled = set(enabled) if enabled is not None else default_enabled(args.mode, args)
+        CURRENT["enabled"], CURRENT["mode"] = enabled, args.mode
         dst = args.out or out_name(path, ext)
         rep = render_image(path, dst, args.mode, enabled, args.court_keep_ids)
         rep["kept_categories"] = sorted(set(CATEGORIES) - enabled)
@@ -1359,6 +1432,7 @@ def process(path: str, args, enabled: Optional[set] = None):
             _, found = collect_hits(lines_from_text(raw), enabled, mode)
             enabled = ask_categories(found)
         anon, stats = anonymize_text(raw, mode, enabled, args.court_keep_ids)
+        CURRENT["enabled"], CURRENT["mode"] = enabled, args.mode
         dst = args.out or out_name(path, ext)
         with open(dst, "w", encoding="utf-8") as f:
             f.write(anon)

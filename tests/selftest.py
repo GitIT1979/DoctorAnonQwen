@@ -285,10 +285,15 @@ def main() -> int:
         check("Иванов Иван Иванович" in text, "--ask учитывает ответ")
 
     print("\n== имена файлов ==")
-    r = run(["doc.pdf"], keep_name=False)
-    named = [f for f in os.listdir(WORK) if f.startswith("document_") and f.endswith("_anon.pdf")]
-    check(r.returncode == 0 and bool(named), "результат назван без исходных данных",
-          str(named[:2]))
+    with open(os.path.join(WORK, "Заявление Иванова 01.02.2023.md"), "w", encoding="utf-8") as f:
+        f.write("Прошу разрешить отсутствие 1 февраля.\n")
+    r = run(["Заявление Иванова 01.02.2023.md"], keep_name=False)
+    hidden = [f for f in os.listdir(WORK) if f.endswith("_hidden.md")]
+    check(r.returncode == 0 and bool(hidden), "имя с ПДн -> _hidden", str(hidden[:2]))
+
+    r = run(["doc.md"], keep_name=False)
+    plain = [f for f in os.listdir(WORK) if f.endswith("_anon.md")]
+    check(r.returncode == 0 and bool(plain), "чистое имя -> _anon", str(plain[:2]))
 
     print("\n== отчёт и ошибки ==")
     r = run(["doc.md", "-o", "rep.md", "--report", "report.json"])

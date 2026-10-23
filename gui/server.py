@@ -137,19 +137,19 @@ def _convert(src: str, dst_dir: str, name: str) -> str:
         text = "".join(p.get_text() for p in doc)
         doc.close()
         mode = "judicial" if D.is_court_act(text) else "document"
-        dst = os.path.join(dst_dir, f"{base}_anon.pdf")
+        dst = os.path.join(dst_dir, D.output_name(name, ".pdf", enabled, mode))
         D.render_pdf(src, dst, mode, enabled, "auto", 300, False, False)
         return dst
 
     if ext in IMAGE_EXT:
-        dst = os.path.join(dst_dir, f"{base}_anon{ext}")
+        dst = os.path.join(dst_dir, D.output_name(name, ext, enabled, "document"))
         D.render_image(src, dst, "document", enabled, False)
         return dst
 
     if ext in (".docx", ".doc"):
         md = D.docx_to_md(src)
         anon, _ = D.anonymize_text(md, "document", enabled, False)
-        dst = os.path.join(dst_dir, f"{base}_anon.md")
+        dst = os.path.join(dst_dir, D.output_name(name, ".md", enabled, "document"))
         with open(dst, "w", encoding="utf-8") as f:
             f.write(anon)
         return dst
@@ -157,7 +157,7 @@ def _convert(src: str, dst_dir: str, name: str) -> str:
     with open(src, encoding="utf-8", errors="replace") as f:
         raw = f.read()
     anon, _ = D.anonymize_text(raw, "document", enabled, False)
-    dst = os.path.join(dst_dir, f"{base}_anon{ext}")
+    dst = os.path.join(dst_dir, D.output_name(name, ext, enabled, "document"))
     with open(dst, "w", encoding="utf-8") as f:
         f.write(anon)
     return dst
@@ -293,8 +293,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/add":
             original = (qs.get("name") or ["file"])[0]
             original = os.path.basename(original.replace("\\", "/"))
-            keep = (qs.get("keepname") or ["0"])[0] == "1"
-            name = original if keep else safe_name(os.path.splitext(original)[1].lower())
+            name = original
             with LOCK:
                 if len(FILES) >= MAX_FILES:
                     self._json(409, {"error": f"лимит {MAX_FILES} файлов"})
