@@ -125,11 +125,25 @@
     color:var(--green-dim);text-transform:uppercase}
   .stats b{color:var(--amber);font-weight:700}
   .hint{margin-top:8px;font-size:10.5px;color:var(--green-dim);letter-spacing:.06em}
+
+  .secret{position:fixed;left:-82px;top:150px;transform:rotate(-34deg);
+    background:#b8231c;color:#ffe9d6;font-size:10px;letter-spacing:.32em;font-weight:700;
+    padding:6px 78px;z-index:12;box-shadow:0 4px 14px rgba(0,0,0,.6);
+    border-top:1px solid #ff8a73;border-bottom:1px solid #6d0f0a;text-transform:uppercase}
+  .classif{display:flex;gap:14px;align-items:center;margin:-4px 0 10px;font-size:10px;
+    letter-spacing:.24em;color:#ff8a73;text-transform:uppercase}
+  .classif .stamp{border:2px solid #b8231c;color:#ff6f5f;padding:2px 8px;transform:rotate(-2deg);
+    box-shadow:0 0 0 1px rgba(184,35,28,.35) inset}
+  .classif .bar{flex:1;height:1px;background:repeating-linear-gradient(90deg,#3a1410 0 6px,transparent 6px 12px)}
+  .dossier{font-size:10px;letter-spacing:.18em;color:#2f8a57;margin-top:2px}
+  .dossier b{color:#ffb642}
+  .burn{margin-top:8px;font-size:9.5px;letter-spacing:.28em;color:#7a2a22;text-transform:uppercase}
   .vault{position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font-size:9px;
     letter-spacing:.4em;color:#163f27;pointer-events:none}
 </style>
 </head>
 <body>
+<div class="secret">совершенно секретно</div>
 <div class="frame">
   <span class="rivet r1"></span><span class="rivet r2"></span>
 
@@ -138,12 +152,21 @@
       <span class="small">VAULT-TEC // ROBCO INDUSTRIES</span>
       <h1>DOCTORHIDE<span class="blink">_</span></h1>
       <span class="sub">ТЕРМИНАЛ ОБЕЗЛИЧИВАНИЯ · МОДЕЛЬ 3000</span>
+      <span class="dossier">ДОСЬЕ <b>VD-101</b> · ОПЕРАТИВНИК: <b>АГЕНТ</b> · ДОПУСК <b>IV</b></span>
     </div>
     <div class="status">
       <div>канал: <b>ЛОКАЛЬНЫЙ</b> ▓▒░</div>
       <div id="ledText">СТАТУС: ОЖИДАНИЕ <span class="blink">█</span></div>
     </div>
   </header>
+
+  <div class="classif">
+    <span class="stamp">ДОСЬЕ · УРОВЕНЬ 4</span>
+    <span class="bar"></span>
+    <span>СЖЕЧЬ ПОСЛЕ ПРОЧТЕНИЯ</span>
+    <span class="bar"></span>
+    <span class="stamp">КАНАЛ ЗАЩИЩЁН</span>
+  </div>
 
   <div class="layout">
     <section class="panel">
@@ -188,7 +211,7 @@
     </div>
   </footer>
 </div>
-<div class="vault">VAULT 101 · TERMLINK PROTOTYPE</div>
+<div class="vault">VAULT 101 · TERMLINK PROTOTYPE · ТОЛЬКО ДЛЯ СЛУЖЕБНОГО ПОЛЬЗОВАНИЯ</div>
 
 <input type="file" id="fileInput" multiple hidden
        accept=".pdf,.docx,.doc,.md,.markdown,.txt,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp">
