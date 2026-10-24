@@ -348,6 +348,23 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"id": fid, "name": name, "size": len(data)})
             return
 
+        if path == "/api/remove":
+            fid = (qs.get("id") or [""])[0]
+            with LOCK:
+                item = next((f for f in FILES if f["id"] == fid), None)
+                if item:
+                    FILES.remove(item)
+            if item:
+                for path_to_del in (item.get("path"), os.path.join(OUT_DIR, item.get("out") or "")):
+                    try:
+                        if path_to_del and os.path.exists(path_to_del):
+                            os.remove(path_to_del)
+                    except OSError:
+                        pass
+                log(f"- {item['name']} удалён из очереди")
+            self._json(200, {"ok": bool(item)})
+            return
+
         if path == "/api/run":
             with LOCK:
                 queued = [f for f in FILES if f["status"] == "queued"]

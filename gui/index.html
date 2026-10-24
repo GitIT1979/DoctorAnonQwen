@@ -83,7 +83,7 @@
 
   .list{margin-top:10px;max-height:52vh;overflow:auto;
     border-top:1px solid var(--line);font-size:12.5px}
-  .item{display:grid;grid-template-columns:34px 1fr 76px 118px 74px;gap:8px;align-items:center;
+  .item{display:grid;grid-template-columns:34px 1fr 76px 112px 70px 26px;gap:8px;align-items:center;
     padding:7px 2px;border-bottom:1px dotted #16452a}
   .item .ico{color:var(--amber);font-size:10px;letter-spacing:.06em}
   .item .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
@@ -96,6 +96,10 @@
   .chip.done{color:var(--green)}
   .chip.error{color:#ff5f5f}
 
+
+  .del{font:700 12px/1 'Courier New',monospace;padding:2px 6px;min-width:0;
+    border:1px solid #1f6b3c;background:#08120b;color:#3dff88;cursor:pointer;letter-spacing:0}
+  .del:hover{border-color:#ff5f5f;color:#ff7b6b}
   .console{border:2px solid var(--line);background:#040a06;display:flex;flex-direction:column;
     min-height:440px;box-shadow:inset 0 0 50px rgba(0,80,30,.25)}
   .console .bar{padding:6px 10px;border-bottom:1px solid var(--line);
@@ -178,7 +182,7 @@
       <div class="row">
         <button id="pickFiles">► ФАЙЛЫ</button>
         <button id="pickDir">► ПАПКА</button>
-        <button id="clear">СБРОС</button>
+        <button id="clear">ОЧИСТИТЬ ВСЁ</button>
         <span class="counter" id="counter">0 / 100</span>
       </div>
       <div class="row">
@@ -267,7 +271,8 @@ function row(item){
     <div class="nm" title="${item.name}">${item.name}</div>
     <div class="sz">${fmtSize(item.size||0)}</div>
     <div><span class="chip ${st}">${label}</span></div>
-    <div style="text-align:right">${link}</div>`;
+    <div style="text-align:right">${link}</div>
+    <div><button class="del" data-id="${item.id}" title="убрать из очереди">✕</button></div>`;
 }
 
 async function upload(file){
@@ -309,6 +314,21 @@ const drop = $('#drop');
 ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 drop.addEventListener('click', () => $('#fileInput').click());
+
+list.addEventListener('click', async e => {
+  const btn = e.target.closest('.del');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  try{
+    await fetch('/api/remove?id=' + encodeURIComponent(id), {method:'POST'});
+    const i = queue.findIndex(q => q.id === id);
+    if (i >= 0) queue.splice(i, 1);
+    const row = document.getElementById('row-' + id);
+    if (row) row.remove();
+    log('файл убран из очереди', 'info');
+    refresh();
+  }catch(err){ log('не удалось убрать: ' + err.message, 'err'); }
+});
 
 async function loadUrl(){
   const input = $('#url');
