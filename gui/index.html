@@ -352,6 +352,14 @@ async function loadUrl(){
 $('#addUrl').onclick = loadUrl;
 $('#url').addEventListener('keydown', e => { if (e.key === 'Enter') loadUrl(); });
 
+$('#zip').addEventListener('click', () => {
+  const btn = $('#zip').querySelector('button');
+  const old = btn.textContent;
+  btn.textContent = 'ГОТОВИМ…';
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 1500);
+});
+
 $('#clear').onclick = async () => {
   await fetch('/api/clear', {method:'POST'});
   queue.length = 0; list.innerHTML = ''; logBox.innerHTML = '';

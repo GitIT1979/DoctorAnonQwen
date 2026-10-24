@@ -44,6 +44,7 @@ IMAGE_EXT = D.IMAGE_EXT
 FILES: list[dict] = []
 LOCK = threading.Lock()
 RUNNING = {"value": False, "started": 0.0, "finished": 0.0}
+ZIP_CACHE = {"key": None, "path": os.path.join(WORK, "results.zip")}
 
 
 LOG = deque(maxlen=400)
@@ -266,13 +267,20 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/zip":
-            buf = io.BytesIO()
             with LOCK:
-                ready = [f for f in FILES if f["status"] == "done"]
-            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for f in ready:
-                    zf.write(os.path.join(OUT_DIR, f["out"]), arcname=f["out"])
-            data = buf.getvalue()
+                ready = [(f["id"], f["out"]) for f in FILES if f["status"] == "done"]
+            key = tuple(ready)
+            target = ZIP_CACHE["path"]
+            if ZIP_CACHE["key"] != key or not os.path.exists(target):
+                tmp = target + ".tmp"
+                with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for _, out in ready:
+                        source = os.path.join(OUT_DIR, out)
+                        if os.path.exists(source):
+                            zf.write(source, arcname=out)
+                os.replace(tmp, target)
+                ZIP_CACHE["key"] = key
+            data = open(target, "rb").read()
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", "attachment; filename=doctorhide_results.zip")
@@ -354,6 +362,7 @@ class Handler(BaseHTTPRequestHandler):
                 item = next((f for f in FILES if f["id"] == fid), None)
                 if item:
                     FILES.remove(item)
+                ZIP_CACHE["key"] = None
             if item:
                 # стираем только загруженную копию; готовый результат остаётся на диске
                 try:
@@ -371,6 +380,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not queued:
                     self._json(400, {"error": "нет файлов в очереди"})
                     return
+                ZIP_CACHE["key"] = None
                 for f in FILES:
                     if f["status"] == "error":
                         f["status"] = "queued"
@@ -385,6 +395,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 FILES.clear()
                 RUNNING["value"] = False
+                ZIP_CACHE["key"] = None
             _reset_dirs()
             self._json(200, {"ok": True})
             return
