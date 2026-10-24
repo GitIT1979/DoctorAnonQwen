@@ -177,9 +177,9 @@ def main() -> int:
 
     print("\n== md ==")
     r = run(["doc.md"])
-    out_md = os.path.join(WORK, "doc_anon.md")
+    out_md = os.path.join(WORK, "doc_hidden.md")
     check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
-    check(os.path.exists(out_md), "создан doc_anon.md")
+    check(os.path.exists(out_md), "создан doc_hidden.md")
     if os.path.exists(out_md):
         text = open(out_md, encoding="utf-8").read()
         left = [b for b in BANNED_DOC if b in text]
@@ -189,9 +189,9 @@ def main() -> int:
 
     print("\n== pdf с текстовым слоем ==")
     r = run(["doc.pdf"])
-    out_pdf = os.path.join(WORK, "doc_anon.pdf")
+    out_pdf = os.path.join(WORK, "doc_hidden.pdf")
     check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
-    check(os.path.exists(out_pdf), "создан doc_anon.pdf")
+    check(os.path.exists(out_pdf), "создан doc_hidden.pdf")
     if os.path.exists(out_pdf):
         text, pages, meta = pdf_text(out_pdf)
         left = [b for b in BANNED_DOC if b in text]
@@ -215,7 +215,7 @@ def main() -> int:
 
     print("\n== судебный акт ==")
     r = run(["court.md"])
-    out_court = os.path.join(WORK, "court_anon.md")
+    out_court = os.path.join(WORK, "court_hidden.md")
     check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
     if os.path.exists(out_court):
         text = open(out_court, encoding="utf-8").read()
@@ -227,7 +227,7 @@ def main() -> int:
 
     print("\n== школьное заявление ==")
     r = run(["school.md"])
-    out_school = os.path.join(WORK, "school_anon.md")
+    out_school = os.path.join(WORK, "school_hidden.md")
     check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
     if os.path.exists(out_school):
         text = open(out_school, encoding="utf-8").read()
@@ -239,7 +239,7 @@ def main() -> int:
 
     print("\n== docx ==")
     r = run(["doc.docx"])
-    out_docx = os.path.join(WORK, "doc_anon.md")
+    out_docx = os.path.join(WORK, "doc_hidden.md")
     check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
     if os.path.exists(out_docx):
         text = open(out_docx, encoding="utf-8").read()
@@ -249,7 +249,7 @@ def main() -> int:
 
     print("\n== скан без текстового слоя ==")
     r = run(["scan.pdf"])
-    out_scan = os.path.join(WORK, "scan_anon.pdf")
+    out_scan = os.path.join(WORK, "scan_hidden.pdf")
     check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
     if os.path.exists(out_scan):
         text, pages, _ = pdf_text(out_scan)
@@ -257,16 +257,16 @@ def main() -> int:
         check(len(text.strip()) > 50, "текстовый слой добавлен", f"{len(text)} символов")
         left = [b for b in BANNED_DOC if b in text]
         check(not left, "в текстовом слое нет скрытых данных", f"осталось: {left}")
-        shot = os.path.join(WORK, "scan_anon.png")
+        shot = os.path.join(WORK, "scan_hidden.png")
         pymupdf.open(out_scan)[0].get_pixmap(dpi=200).save(shot)
         whited = whited_pixels(os.path.join(WORK, "doc.png"), shot)
         check(whited > 300, "пиксели данных выжжены", f"закрыто точек: {whited}")
 
     print("\n== изображение ==")
     r = run(["doc.png"])
-    out_img = os.path.join(WORK, "doc_anon.png")
+    out_img = os.path.join(WORK, "doc_hidden.png")
     check(r.returncode == 0, "код возврата 0", r.stderr.strip()[:120])
-    check(os.path.exists(out_img), "создан doc_anon.png")
+    check(os.path.exists(out_img), "создан doc_hidden.png")
     if os.path.exists(out_img):
         check(Image.open(out_img).size == Image.open(png).size, "размер сохранён")
         whited = whited_pixels(png, out_img)
@@ -292,8 +292,8 @@ def main() -> int:
     check(r.returncode == 0 and bool(hidden), "имя с ПДн -> _hidden", str(hidden[:2]))
 
     r = run(["doc.md"], keep_name=False)
-    plain = [f for f in os.listdir(WORK) if f.endswith("_anon.md")]
-    check(r.returncode == 0 and bool(plain), "чистое имя -> _anon", str(plain[:2]))
+    plain = [f for f in os.listdir(WORK) if f.endswith("_hidden.md")]
+    check(r.returncode == 0 and bool(plain), "чистое имя -> _hidden", str(plain[:2]))
 
     print("\n== отчёт и ошибки ==")
     r = run(["doc.md", "-o", "rep.md", "--report", "report.json"])

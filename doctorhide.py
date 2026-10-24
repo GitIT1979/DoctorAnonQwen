@@ -297,6 +297,13 @@ RULES: List[Tuple[str, str, str, Optional[str], int]] = [
      r"\b(?:Межрайонн\w+|Межрегиональн\w+|ИФНС|ФНС|Федеральн\w+\s+налогов\w+\s+служб\w+|"
      r"Управлени\w+\s+\w+|Министерств\w+|Департамент\w*|Администраци\w+|"
      r"Пенсионн\w+\s+фонд\w*|Государственн\w+\s+учреждени\w+)\s+[^\n,;]{3,120}", None, 0),
+    ("identity", "label_value",
+     r"(?:кем\s+выдан\w*|когда\s+выдан\w*|дата\s+выдачи|выдан\w*|серия\s+документа|"
+     r"серия|номер\s+документа|код\s+подразделения|место\s+рождения|место\s+жительства|"
+     r"зарегистрирован\w*|прожива\w+|снилс|страховой\s+номер|полис\w*|ОМС|"
+     r"свидетельств\w+\s+о\s+\w+)\s*[:№]?\s*([^\n]{2,90})", None, 1),
+    ("birth", "birth_place",
+     r"(?:место\s+рождения|родил\w+|дата\s+рождения)\s*[:—]?\s*([^\n]{2,90})", None, 1),
     ("org", "university",
      r"\b(?:ФГБОУ|ФГАОУ|ФГБУ|ГБОУ)?\s*(?:[А-ЯЁ][А-Яа-яЁё\-]+\s+){0,5}"
      r"(?:университет\w*|институт\w*|академи\w+|колледж\w*|техникум\w*|училищ\w+)\b[^\n]{0,60}",
@@ -638,6 +645,8 @@ def collect_hits(lines: List[Line], enabled: set, mode: str, only_ids: Optional[
         labels = (
             ("reg_number", r"(?:регистрационн|реестров|регистров)\w*\s+номер"),
             ("issue_date", r"(?:дата\s+выдачи|выдан)\w*"),
+            ("identity", r"(?:кем\s+выдан|место\s+рождения|место\s+жительства|серия|"
+                         r"снилс|страховой\s+номер|полис|код\s+подразделения)"),
         )
         for i, line in enumerate(lines[:-1]):
             for rid, pat in labels:
@@ -1035,6 +1044,34 @@ def _qr_scan_rects(page: pymupdf.Page, dpi: int = 200):
     return rects
 
 
+def photo_rects(page) -> List[pymupdf.Rect]:
+    """Фотографии в документах: портретный растр, не код и не логотип."""
+    out: List[pymupdf.Rect] = []
+    page_area = page.rect.width * page.rect.height
+    for img in page.get_images(full=True):
+        xref = img[0]
+        try:
+            pix = pymupdf.Pixmap(page.parent, xref)
+            if pix.n > 4:
+                pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
+            im = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        except Exception:
+            continue
+        w, h = im.size
+        if not h:
+            continue
+        ratio = w / float(h)
+        if not (0.55 <= ratio <= 1.55):
+            continue
+        if _looks_like_code(im):
+            continue
+        for r in page.get_image_rects(xref):
+            share = (r.width * r.height) / page_area
+            if 0.03 <= share <= 0.40:
+                out.append(r)
+    return out
+
+
 def code_rects(page) -> List[pymupdf.Rect]:
     """Находит вставленные в страницу QR-коды и штрихкоды."""
     out: List[pymupdf.Rect] = []
@@ -1078,6 +1115,7 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
             codes = code_rects(page)
             if scanned:
                 codes = codes + _qr_scan_rects(page, min(dpi, 250))
+            codes = codes + photo_rects(page)
             if codes:
                 rects.extend((r, "qr") for r in codes)
                 stats["qr"] = stats.get("qr", 0) + len(codes)
