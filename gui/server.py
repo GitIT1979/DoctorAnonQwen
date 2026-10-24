@@ -355,12 +355,12 @@ class Handler(BaseHTTPRequestHandler):
                 if item:
                     FILES.remove(item)
             if item:
-                for path_to_del in (item.get("path"), os.path.join(OUT_DIR, item.get("out") or "")):
-                    try:
-                        if path_to_del and os.path.exists(path_to_del):
-                            os.remove(path_to_del)
-                    except OSError:
-                        pass
+                # стираем только загруженную копию; готовый результат остаётся на диске
+                try:
+                    if item.get("path") and os.path.exists(item["path"]):
+                        os.remove(item["path"])
+                except OSError:
+                    pass
                 log(f"- {item['name']} удалён из очереди")
             self._json(200, {"ok": bool(item)})
             return
