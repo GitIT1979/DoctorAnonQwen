@@ -662,6 +662,20 @@ def collect_hits(lines: List[Line], enabled: set, mode: str, only_ids: Optional[
                     stats["docno" if rid == "reg_number" else "identity"] =                         stats.get("docno" if rid == "reg_number" else "identity", 0) + 1
                     break
 
+    # рукописная дата справа от подписи: закрываем всю правую часть строки
+    if "identity" in enabled and not keep_ids:
+        right_edge = max((w.rect.x1 for ln in lines for w in ln.words), default=0)
+        for line in lines:
+            m = re.search(r"дата\s+выдачи", line.text, re.I)
+            if not m or not line.words:
+                continue
+            y0 = min(w.rect.y0 for w in line.words) - 5
+            y1 = max(w.rect.y1 for w in line.words) + 5
+            x0 = line.words[-1].rect.x1 + 3
+            x1 = min(max(right_edge, x0 + 80), x0 + 210)
+            rects.append((pymupdf.Rect(x0, y0, x1, y1), "identity"))
+            stats["identity"] = stats.get("identity", 0) + 1
+
     return rects, stats
 
 
@@ -1007,12 +1021,16 @@ def _qr_scan_rects(page: pymupdf.Page, dpi: int = 200):
                 start_y = y
             streak += 1
         else:
-            if streak >= 25:
-                rects.append(pymupdf.Rect(0, start_y * scale, W * scale, y * scale))
+            if streak >= 40:
+                band = pymupdf.Rect(0, start_y * scale, W * scale, y * scale)
+                if band.height < page.rect.height * 0.25:
+                    rects.append(band)
             streak = 0
         prev_sig = sig
-    if streak >= 25:
-        rects.append(pymupdf.Rect(0, start_y * scale, W * scale, H * scale))
+    if streak >= 40:
+        band = pymupdf.Rect(0, start_y * scale, W * scale, H * scale)
+        if band.height < page.rect.height * 0.25:
+            rects.append(band)
 
     return rects
 
@@ -1063,6 +1081,8 @@ def render_pdf(src: str, dst: str, mode: str, enabled: set, ocr: str, dpi: int,
             if codes:
                 rects.extend((r, "qr") for r in codes)
                 stats["qr"] = stats.get("qr", 0) + len(codes)
+        limit = page.rect.width * page.rect.height * 0.25
+        rects = [(r, c) for r, c in rects if r.width * r.height <= limit]
         boxes = merge_rects([r for r, _ in rects])
         report["boxes"] += len(boxes)
         for k, v in stats.items():
@@ -1351,8 +1371,8 @@ def sanitize_filename(stem: str, enabled: set, mode: str):
 def output_name(name: str, ext: str, enabled: set, mode: str) -> str:
     """Итоговое имя: чистое остаётся с _anon, изменённое — с _hidden."""
     stem = os.path.splitext(name)[0]
-    clean, changed = sanitize_filename(stem, enabled, mode)
-    return f"{clean}_hidden{ext}" if changed else f"{stem}_anon{ext}"
+    clean, _changed = sanitize_filename(stem, enabled, mode)
+    return f"{clean}_hidden{ext}"
 
 
 def out_name(src: str, ext: str) -> str:
@@ -1360,7 +1380,7 @@ def out_name(src: str, ext: str) -> str:
     base = os.path.basename(src)
     if KEEP_NAME:
         stem = os.path.splitext(base)[0]
-        return f"{stem}_anon{ext}"
+        return f"{stem}_hidden{ext}"
     enabled = CURRENT.get("enabled") or set(CATEGORIES)
     mode = CURRENT.get("mode") or "document"
     return output_name(base, ext, enabled, mode)
@@ -1523,12 +1543,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         results.append(rep)
         if not args.json:
             cats = ", ".join(f"{k}:{v}" for k, v in sorted(rep.get("categories", {}).items())) or "—"
-            print(f"\n{rep['file']} → {rep['output']}")
-            print(f"  режим: {rep.get('mode')}  категории: {cats}")
-            if rep.get("boxes") is not None:
-                print(f"  плашек: {rep['boxes']}  восстановлено линий: {rep.get('restored_lines', 0)}")
-            if rep.get("leftover"):
-                print(f"  ВНИМАНИЕ, остались совпадения: {rep['leftover']}")
+            print(f"{rep['file']} -> {rep['output']}")
 
     if not results:
         print("ни одного файла не обработано", file=sys.stderr)
